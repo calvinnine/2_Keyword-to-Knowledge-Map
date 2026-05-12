@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Docker volumes (never committed)
+postgres_data/
