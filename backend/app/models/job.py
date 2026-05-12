@@ -47,6 +47,9 @@ class AnalysisJob(Base):
     # Celery task IDs for cancellation
     celery_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Claude-generated insight (populated after analysis completes)
+    insight: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Extra metadata
     params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 

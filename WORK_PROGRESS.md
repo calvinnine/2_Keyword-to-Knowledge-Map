@@ -51,7 +51,7 @@ MVP Phase 1–3 구현 완료. GitHub 레포 셋업 완료.
 ## 다음 단계 (Phase 4+)
 
 - [ ] **Phase 4**: Next.js 프론트엔드 (디자인 시스템 링크 참고)
-- [ ] **Phase 5**: Claude orchestration + 블로그 초안 생성
+- [ ] **Phase 5**: Claude orchestration (분석 결과 해석/요약)
 - [ ] **Phase 6**: NTIS overlay (ntis_projects, ntis_institutions, comparative_results)
 - [ ] SCI/SSCI registry 후처리기 (`papers.sci_classification` 채우기)
 - [ ] Large Mode 최적화 (igraph/Leiden swap-in)

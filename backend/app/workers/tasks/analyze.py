@@ -10,6 +10,7 @@ from app.analysis import (
     build_keyword_graph,
     compute_centrality,
     compute_clusters,
+    generate_insight,
 )
 from app.database import SessionLocal
 from app.models.job import AnalysisJob, JobStatus
@@ -47,6 +48,11 @@ def analyze_graphs(self, job_id: str) -> dict:
                 "edges": graph.edge_count,
                 "clusters": graph.cluster_count,
             }
+
+        # Generate Claude insight (best-effort; never fails the job)
+        insight = generate_insight(db, job_uuid)
+        if insight:
+            job.insight = insight
 
         job.status = JobStatus.COMPLETED
         job.completed_at = datetime.now(timezone.utc)
