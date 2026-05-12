@@ -137,7 +137,28 @@ Phase 6: NTIS overlay 구현 완료 (API 키 신청 후 활성화).
 
 ---
 
+### [2026-05-12] Meridian 디자인 시스템 적용 + 버그픽스
+
+#### ✅ SQLAlchemy enum 버그 픽스
+- `backend/app/models/job.py`: `Enum(JobStatus, values_callable=lambda x: [e.value for e in x])`
+  - PostgreSQL native enum이 uppercase 멤버명 대신 lowercase 값을 사용하도록 수정
+  - 기존: `"PENDING"` 삽입 → 오류 / 수정 후: `"pending"` 삽입 → 정상
+
+#### ✅ Meridian Policy Design System 프론트엔드 적용
+- `frontend/src/app/globals.css` 전면 교체
+  - 폰트: Geist → Pretendard(한국어) + Inter Tight(영문) + JetBrains Mono(코드)
+  - 색상: 시에나/크림 팔레트 → Navy Ink + Graphite + Soft Blue Accent(`#6E9BD9`)
+  - 라운드: sm=4px · md=6px · lg=8px (기존 6/10/14px)
+  - 그림자: 쿨톤 navy-based (기존 warm-tinted)
+  - 모션: `cubic-bezier(0.2, 0.8, 0.2, 1)`, 160/240/360ms
+- `frontend/src/app/layout.tsx`: Geist 폰트 제거, CSS CDN 폰트로 전환
+- `frontend/src/components/ui/Button.tsx`: focus ring Meridian 스펙 (`ring-2 ring-accent ring-offset-2`)
+- `frontend/src/components/ui/Input.tsx`: focus ring 동일 적용, radius sm=4px
+- `frontend/src/components/ui/Card.tsx`: rest 상태 shadow 제거 (border-only, Meridian 기준)
+
+---
+
 ## 다음 단계
 
-- [ ] 프론트엔드: 다크 모드, 고급 필터링, 결과 내보내기
 - [ ] 프론트엔드: NTIS 비교 결과 시각화 패널
+- [ ] 프론트엔드: 고급 필터링, 결과 내보내기

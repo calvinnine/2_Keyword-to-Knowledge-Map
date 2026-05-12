@@ -29,7 +29,8 @@ class AnalysisJob(Base):
     )
     keyword: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
     status: Mapped[JobStatus] = mapped_column(
-        Enum(JobStatus), default=JobStatus.PENDING, nullable=False, index=True
+        Enum(JobStatus, values_callable=lambda x: [e.value for e in x]),
+        default=JobStatus.PENDING, nullable=False, index=True
     )
 
     # Search parameters

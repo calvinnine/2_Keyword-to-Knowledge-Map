@@ -1,76 +1,92 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css");
+@import url("https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
- * K2KM Design Tokens
- * Inspired by the Claude product surface: warm off-white background,
- * neutral grays for hierarchy, sienna accent for primary actions.
+ * K2KM Design Tokens — Meridian Policy Design System
  * ------------------------------------------------------------------------- */
 
 :root {
   /* Surfaces */
-  --color-bg: #faf9f5;
-  --color-surface: #ffffff;
-  --color-surface-2: #f3f1ec;
-  --color-border: #e6e3dc;
-  --color-border-strong: #d4d0c7;
+  --color-bg:           #F8FAFC;   /* graphite-50 */
+  --color-surface:      #FFFFFF;
+  --color-surface-2:    #F1F4F8;   /* graphite-100 */
+  --color-border:       #E2E8F0;   /* graphite-200 */
+  --color-border-strong:#CBD3DD;   /* graphite-300 */
 
   /* Text */
-  --color-fg: #1f1e1d;
-  --color-fg-muted: #6f6e6b;
-  --color-fg-subtle: #94928d;
+  --color-fg:           #111827;   /* ink-800 */
+  --color-fg-muted:     #475569;   /* graphite-600 */
+  --color-fg-subtle:    #64748B;   /* graphite-500 */
 
-  /* Accent (sienna) */
-  --color-accent: #c8643e;
-  --color-accent-hover: #b25731;
-  --color-accent-fg: #ffffff;
-  --color-accent-soft: #f6e9e1;
+  /* Accent (soft blue) */
+  --color-accent:       #6E9BD9;   /* accent-400 */
+  --color-accent-hover: #5B8DCF;   /* accent-500 */
+  --color-accent-fg:    #FFFFFF;
+  --color-accent-soft:  #EEF4FB;   /* accent-50 */
 
   /* Status */
-  --color-success: #3f7a4e;
-  --color-success-soft: #e3efe6;
-  --color-warning: #b88a2a;
-  --color-warning-soft: #f7ecd2;
-  --color-danger: #b54241;
-  --color-danger-soft: #f6e0df;
-  --color-info: #3d6796;
-  --color-info-soft: #e0e9f3;
+  --color-success:      #2F6B43;
+  --color-success-soft: #ECF4EE;
+  --color-warning:      #7A5710;
+  --color-warning-soft: #FAF1E0;
+  --color-danger:       #8C2B22;
+  --color-danger-soft:  #F7E8E6;
+  --color-info:         #2F5380;
+  --color-info-soft:    #EEF4FB;
 
   /* Radii */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(31, 30, 29, 0.04);
-  --shadow-md: 0 4px 12px rgba(31, 30, 29, 0.06);
+  /* Shadows — cool-tinted, navy-based */
+  --shadow-sm: 0 1px 2px rgb(17 24 39 / 0.04);
+  --shadow-md: 0 4px 12px rgb(17 24 39 / 0.06), 0 1px 3px rgb(17 24 39 / 0.04);
+  --shadow-lg: 0 12px 32px rgb(17 24 39 / 0.10), 0 4px 8px rgb(17 24 39 / 0.06);
+
+  /* Motion */
+  --ease-out:   cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-micro:  160ms;
+  --dur-base:   240ms;
+  --dur-slow:   360ms;
+
+  /* Fonts */
+  --font-sans: "Inter Tight", "Pretendard Variable", Pretendard,
+               -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-kr:   "Pretendard Variable", Pretendard, "Inter Tight",
+               -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+               Consolas, monospace;
 }
 
 @theme inline {
-  --color-background: var(--color-bg);
-  --color-foreground: var(--color-fg);
-  --color-surface: var(--color-surface);
-  --color-surface-2: var(--color-surface-2);
-  --color-border: var(--color-border);
+  --color-background:    var(--color-bg);
+  --color-foreground:    var(--color-fg);
+  --color-surface:       var(--color-surface);
+  --color-surface-2:     var(--color-surface-2);
+  --color-border:        var(--color-border);
   --color-border-strong: var(--color-border-strong);
-  --color-muted: var(--color-fg-muted);
-  --color-subtle: var(--color-fg-subtle);
-  --color-accent: var(--color-accent);
-  --color-accent-hover: var(--color-accent-hover);
-  --color-accent-fg: var(--color-accent-fg);
-  --color-accent-soft: var(--color-accent-soft);
-  --color-success: var(--color-success);
-  --color-success-soft: var(--color-success-soft);
-  --color-warning: var(--color-warning);
-  --color-warning-soft: var(--color-warning-soft);
-  --color-danger: var(--color-danger);
-  --color-danger-soft: var(--color-danger-soft);
-  --color-info: var(--color-info);
-  --color-info-soft: var(--color-info-soft);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
+  --color-muted:         var(--color-fg-muted);
+  --color-subtle:        var(--color-fg-subtle);
+  --color-accent:        var(--color-accent);
+  --color-accent-hover:  var(--color-accent-hover);
+  --color-accent-fg:     var(--color-accent-fg);
+  --color-accent-soft:   var(--color-accent-soft);
+  --color-success:       var(--color-success);
+  --color-success-soft:  var(--color-success-soft);
+  --color-warning:       var(--color-warning);
+  --color-warning-soft:  var(--color-warning-soft);
+  --color-danger:        var(--color-danger);
+  --color-danger-soft:   var(--color-danger-soft);
+  --color-info:          var(--color-info);
+  --color-info-soft:     var(--color-info-soft);
+  --font-sans:           var(--font-sans);
+  --font-mono:           var(--font-mono);
+  --radius-sm:           var(--radius-sm);
+  --radius-md:           var(--radius-md);
+  --radius-lg:           var(--radius-lg);
 }
 
 * {
@@ -81,11 +97,12 @@ html,
 body {
   background: var(--color-bg);
   color: var(--color-fg);
-  font-family: var(--font-sans), system-ui, -apple-system, "Segoe UI",
-    Helvetica, Arial, sans-serif;
+  font-family: var(--font-kr), var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  letter-spacing: -0.005em;
+  word-break: keep-all;
+  line-height: 1.7;
+  letter-spacing: -0.01em;
 }
 
 ::selection {
@@ -93,15 +110,10 @@ body {
   color: var(--color-fg);
 }
 
-/* Subtle scrollbar */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb {
   background: var(--color-border-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+::-webkit-scrollbar-track { background: transparent; }
