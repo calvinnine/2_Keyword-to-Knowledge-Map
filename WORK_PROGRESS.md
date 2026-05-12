@@ -1,7 +1,7 @@
 # K2KM Work Progress
 
 ## 현재 단계
-MVP Phase 1–3 구현 완료. GitHub 레포 셋업 완료.
+MVP Phase 1–5 구현 완료. Groq 인사이트 생성 연동 완료.
 
 ---
 
@@ -44,15 +44,36 @@ MVP Phase 1–3 구현 완료. GitHub 레포 셋업 완료.
 #### ✅ GitHub 셋업
 - `calvinnine/2_Keyword-to-Knowledge-Map` public 레포 생성
 - 68개 파일 초기 커밋 push
-- wrapup 규칙: commit까지, push는 수동
+- 브랜치 전략: main은 문서/설정만, 기능은 임시 브랜치에서 작업
+
+### [2026-05-12] Phase 4 — Next.js 프론트엔드 MVP
+
+#### ✅ Phase 4 — 웹앱 UI / 시각화
+- **프레임워크**: Next.js 16 (App Router), React 19, TypeScript, Tailwind v4
+- **페이지**: `/` 분석 목록(5초 폴링), `/jobs/new` 키워드+NL 모드, `/jobs/[id]` 분석 상세, `/graphs/[id]` 그래프 시각화
+- **그래프**: Sigma.js + Graphology + ForceAtlas2 레이아웃, Louvain 군집 색상
+- **API 통신**: TanStack Query v5, 타입 안전 fetch 래퍼
+- **디자인**: CSS 변수 기반 커스텀 토큰 (Claude 스타일 영감)
+- 브랜치: `phase-4-frontend-mvp`
+
+### [2026-05-12] Phase 5 — Groq 인사이트 생성
+
+#### ✅ Phase 5 — LLM 분석 인사이트
+- `analysis/insight.py`: 그래프 분석 완료 후 Groq API로 한국어 연구 인사이트 자동 생성
+  - 논문 네트워크 상위 논문(PageRank), 저자 네트워크 핵심 저자, 키워드 트렌드 요약
+  - API 키 없으면 조용히 건너뜀 (best-effort, job 실패 없음)
+- `alembic/versions/0002_add_job_insight.py`: `analysis_jobs.insight` 컬럼 추가
+- LLM: Groq (`llama3-70b-8192`) — OpenAI-compatible API, 외부 배포 무료 티어
+  - `INSIGHT_BASE_URL` 설정으로 다른 제공자로 교체 가능
+- 프론트엔드: `JobDetail.tsx` 분석 완료 잡에 "AI 인사이트" 카드 표시
+- 브랜치: `phase-5-claude-insight`
 
 ---
 
-## 다음 단계 (Phase 4+)
+## 다음 단계 (Phase 6+)
 
-- [ ] **Phase 4**: Next.js 프론트엔드 (디자인 시스템 링크 참고)
-- [ ] **Phase 5**: Claude orchestration (분석 결과 해석/요약)
 - [ ] **Phase 6**: NTIS overlay (ntis_projects, ntis_institutions, comparative_results)
 - [ ] SCI/SSCI registry 후처리기 (`papers.sci_classification` 채우기)
 - [ ] Large Mode 최적화 (igraph/Leiden swap-in)
 - [ ] Embedding similarity 엣지 추가
+- [ ] 프론트엔드: 다크 모드, 고급 필터링, 결과 내보내기
