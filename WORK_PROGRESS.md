@@ -2,6 +2,8 @@
 
 ## 현재 단계
 MVP Phase 1–5 구현 완료. Groq 인사이트 생성 연동 완료.
+SCI/SSCI 분류기, Large Mode(igraph/Leiden), Embedding 유사도 엣지 완료.
+Phase 6: NTIS overlay 구현 완료 (API 키 신청 후 활성화).
 
 ---
 
@@ -68,12 +70,74 @@ MVP Phase 1–5 구현 완료. Groq 인사이트 생성 연동 완료.
 - 프론트엔드: `JobDetail.tsx` 분석 완료 잡에 "AI 인사이트" 카드 표시
 - 브랜치: `phase-5-claude-insight`
 
+### [2026-05-12] 후처리기 3종 추가
+
+#### ✅ SCI/SSCI 분류기
+- `processing/sci_classifier.py`: OpenAlex `fields_of_study` 기반 휴리스틱 분류
+  - Level-0 concept → SCIE(자연과학) / SSCI(사회과학) / AHCI(인문학) / ESCI(기타 저널)
+  - 비저널(conference, preprint) → None 처리
+  - `process.py` 파이프라인 끝에 자동 호출 (best-effort, job 실패 없음)
+  - 비고: Clarivate WoS 공식 분류가 아닌 근사치. API 키 확보 시 교체 가능
+
+#### ✅ Large Mode 최적화 (igraph/Leiden)
+- `analysis/clustering.py`: 노드 ≥ 5,000 시 Leiden(igraph + leidenalg) 자동 사용
+  - 소규모: Louvain (python-louvain), 대규모: Leiden (leidenalg)
+  - igraph 미설치 시 Louvain으로 graceful fallback
+- `analysis/centrality.py`: 노드 ≥ 5,000 시 igraph로 betweenness/closeness 계산
+  - NetworkX 대비 10-100× 빠름 (C 레벨 구현)
+  - igraph 미설치 시 NetworkX sampled 방식으로 fallback
+- `requirements.txt`: `python-igraph==0.11.8`, `leidenalg==0.10.2` 추가
+
+#### ✅ Embedding Similarity 엣지
+- `analysis/paper_graph.py`: abstract 임베딩 기반 의미적 유사도 엣지 추가
+  - 모델: `all-MiniLM-L6-v2` (sentence-transformers, ~22M params)
+  - 코사인 유사도 ≥ 0.80 인 논문 쌍에 `embedding_similarity` 엣지 생성
+  - 대규모 잡은 citation_count 상위 500개 논문으로 제한
+  - 노드당 최대 5개 이웃으로 엣지 수 제어
+  - sentence-transformers 미설치 시 조용히 건너뜀 (best-effort)
+- `requirements.txt`: `sentence-transformers==3.3.1` 추가
+
 ---
 
-## 다음 단계 (Phase 6+)
+### [2026-05-12] Phase 6 — NTIS Overlay
 
-- [ ] **Phase 6**: NTIS overlay (ntis_projects, ntis_institutions, comparative_results)
-- [ ] SCI/SSCI registry 후처리기 (`papers.sci_classification` 채우기)
-- [ ] Large Mode 최적화 (igraph/Leiden swap-in)
-- [ ] Embedding similarity 엣지 추가
+#### ✅ Phase 6 — NTIS R&D 과제 연동 + 비교 분석
+- `models/ntis.py`: 3개 테이블 정의
+  - `NtisProject`: 과제명, 부처, 전문기관, 수행기관, 연구비, 기간, 키워드, 연구자
+  - `NtisInstitution`: 수행기관 de-dedup (이름 정규화 후 재사용)
+  - `ComparativeResult`: NTIS 과제 ↔ K2KM 논문/저자 매핑
+- `alembic/versions/0003_add_ntis.py`: 위 3개 테이블 + 인덱스 마이그레이션
+- `collectors/ntis.py`: NTIS Open API collector (기술문서 기반 실제 스펙)
+  - 과제검색: `GET /rndopen/openApi/public_project` (XML 응답)
+  - 성과검색: `GET /rndopen/openApi/public_result?collection=rpaper` (XML 응답)
+  - 연관콘텐츠: `GET /rndopen/openApi/ConnectionContent` (JSON 응답)
+  - API 키 없으면 빈 제너레이터 반환 (파이프라인 중단 없음), retry(4회)
+- `processing/ntis_ingestion.py`: raw dict → NtisProject / NtisInstitution
+  - 실제 XML 필드명 매핑 (ProjectNumber, ProjectTitle_Korean, OrderAgency_Name 등)
+  - 수행기관 de-dedup (in-memory cache), 기관 유형 자동 추론
+- `analysis/comparative.py`: 4가지 매칭 전략
+  1. `keyword_overlap`: NTIS 과제 키워드 ↔ 논문 키워드 Jaccard (≥0.10)
+  2. `author_name`: NTIS 연구자 이름 ↔ K2KM 저자 이름 정규화 일치
+  3. `institution_name`: NTIS 수행기관 ↔ 저자 소속 토큰 Jaccard (≥0.50)
+  4. `paper_outcome_direct`: 성과검색 API 논문 제목 정규화 직접 매핑
+- `workers/tasks/ntis_overlay.py`: 독립 Celery task (메인 파이프라인과 별개)
+  - 과제 수집 → 성과(논문) 수집 → comparative analysis 순서로 실행
+  - API 키 없을 때도 comparative analysis는 실행 (기존 적재분 활용)
+- `api/v1/endpoints/ntis.py`: 4개 엔드포인트
+  - `POST /jobs/{job_id}/ntis-overlay` — 오버레이 task 큐잉
+  - `GET  /jobs/{job_id}/ntis` — 과제 목록 + 매칭 집계
+  - `GET  /jobs/{job_id}/ntis/projects/{id}` — 과제 상세
+  - `GET  /jobs/{job_id}/ntis/comparisons` — 비교 결과 목록 (match_type 필터)
+- `config.py`: `NTIS_API_KEY` 설정 추가
+- `workers/celery_app.py`: ntis_overlay task 모듈 등록
+- 브랜치: `phase-5-claude-insight` (계속 작업)
+
+**활성화 방법**: `.env`에 `NTIS_API_KEY=<발급받은_키>` 추가 후
+`POST /api/v1/jobs/{job_id}/ntis-overlay` 호출.
+
+---
+
+## 다음 단계
+
 - [ ] 프론트엔드: 다크 모드, 고급 필터링, 결과 내보내기
+- [ ] 프론트엔드: NTIS 비교 결과 시각화 패널

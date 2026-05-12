@@ -24,6 +24,11 @@ tenacity==9.0.0
 # Graph analysis
 networkx==3.4.2
 python-louvain==0.16
+python-igraph==0.11.8
+leidenalg==0.10.2
+
+# Embedding similarity
+sentence-transformers==3.3.1
 
 # Data processing
 numpy==2.2.0
