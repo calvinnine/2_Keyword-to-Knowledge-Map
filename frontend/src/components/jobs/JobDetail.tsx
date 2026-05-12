@@ -129,7 +129,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm">
               <span>AI 인사이트</span>
-              <Badge variant="accent">Claude</Badge>
+              <Badge variant="accent">Groq</Badge>
             </CardTitle>
           </CardHeader>
           <CardBody className="text-sm leading-relaxed text-[var(--color-fg)]">
