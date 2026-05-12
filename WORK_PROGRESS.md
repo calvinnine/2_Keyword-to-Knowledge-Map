@@ -1,7 +1,7 @@
 # K2KM Work Progress
 
 ## 현재 단계
-MVP Phase 1–3 구현 완료. GitHub 레포 셋업 완료.
+MVP Phase 1–4 구현 완료. 프론트엔드 웹앱 배포 준비 완료.
 
 ---
 
@@ -46,13 +46,28 @@ MVP Phase 1–3 구현 완료. GitHub 레포 셋업 완료.
 - 68개 파일 초기 커밋 push
 - wrapup 규칙: commit까지, push는 수동
 
+### [2026-05-12] Phase 4 — Next.js 프론트엔드 MVP 완성
+
+#### ✅ Phase 4 — 웹앱 UI / 시각화
+- **프레임워크**: Next.js 16 (App Router), React 19, TypeScript, Tailwind v4
+- **페이지 라우팅**:
+  - `/`: 분석 목록 (5초 자동 폴링)
+  - `/jobs/new`: 키워드 모드 + 자연어 쿼리 모드 (실시간 미리보기)
+  - `/jobs/[id]`: 분석 상세 (진행 상태, 논문/저자/키워드/그래프 탭)
+  - `/graphs/[id]`: 그래프 시각화 (Sigma.js + ForceAtlas2 + Louvain 색상)
+- **라이브러리**: TanStack Query v5 (데이터 페칭), Sigma.js + Graphology (그래프)
+- **UI 컴포넌트**: Card, Button, Input, Tabs, Badge (Claude 제품 스타일 영감)
+- **디자인 시스템**: CSS 변수 기반 커스텀 토큰 (색상/라운드/그림자)
+- **API 통신**: 타입 안전 fetch 래퍼 (`src/lib/api/client.ts`), Pydantic ↔ TypeScript 스키마 동기화
+- **테스트**: 모든 라우트 HTTP 200, 타입 체킹 통과
+
 ---
 
-## 다음 단계 (Phase 4+)
+## 다음 단계 (Phase 5+)
 
-- [ ] **Phase 4**: Next.js 프론트엔드 (디자인 시스템 링크 참고)
 - [ ] **Phase 5**: Claude orchestration + 블로그 초안 생성
 - [ ] **Phase 6**: NTIS overlay (ntis_projects, ntis_institutions, comparative_results)
 - [ ] SCI/SSCI registry 후처리기 (`papers.sci_classification` 채우기)
 - [ ] Large Mode 최적화 (igraph/Leiden swap-in)
 - [ ] Embedding similarity 엣지 추가
+- [ ] 프론트엔드: 다크 모드, 고급 필터링, 결과 내보내기
