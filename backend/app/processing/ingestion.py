@@ -207,6 +207,40 @@ class IngestionService:
     # Citation resolution (call after full ingestion)
     # ------------------------------------------------------------------
 
+    def update_author_primary_countries(self) -> int:
+        """Aggregate AuthorAffiliation records to set Author.primary_country_code.
+
+        Uses majority-vote over all affiliation records for each author.
+        Call once after all ingestion for a job is complete.
+        Returns number of authors updated.
+        """
+        from collections import Counter
+        from sqlalchemy import select as sa_select
+
+        authors = self._db.execute(sa_select(Author)).scalars().all()
+        updated = 0
+        for author in authors:
+            aff_rows = self._db.execute(
+                sa_select(AuthorAffiliation.country_code, AuthorAffiliation.country_name)
+                .where(
+                    AuthorAffiliation.author_id == author.id,
+                    AuthorAffiliation.country_code.is_not(None),
+                )
+            ).all()
+            if not aff_rows:
+                continue
+            counter: Counter = Counter(row.country_code for row in aff_rows)
+            top_code = counter.most_common(1)[0][0]
+            # Grab matching country_name (first occurrence of winning code)
+            top_name = next(
+                (row.country_name for row in aff_rows if row.country_code == top_code),
+                None,
+            )
+            author.primary_country_code = top_code
+            author.primary_country_name = top_name
+            updated += 1
+        return updated
+
     def resolve_openalex_citations(self, payload: dict, citing_paper_id: uuid.UUID) -> int:
         """Insert Citation rows for known referenced_works. Returns count inserted."""
         inserted = 0

@@ -84,6 +84,8 @@ def upgrade() -> None:
         sa.Column("orcid", sa.String(100)),
         sa.Column("paper_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("citation_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("primary_country_code", sa.String(10)),
+        sa.Column("primary_country_name", sa.String(200)),
         sa.Column("extra", postgresql.JSONB()),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
@@ -91,6 +93,7 @@ def upgrade() -> None:
     op.create_index("ix_authors_openalex_id", "authors", ["openalex_id"])
     op.create_index("ix_authors_semantic_scholar_id", "authors", ["semantic_scholar_id"])
     op.create_index("ix_authors_orcid", "authors", ["orcid"])
+    op.create_index("ix_authors_primary_country_code", "authors", ["primary_country_code"])
 
     op.create_table(
         "keywords",

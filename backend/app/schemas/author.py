@@ -26,6 +26,8 @@ class AuthorListItem(BaseModel):
 class AuthorRead(AuthorListItem):
     semantic_scholar_id: str | None
     orcid: str | None
+    primary_country_code: str | None
+    primary_country_name: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

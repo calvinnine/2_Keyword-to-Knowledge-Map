@@ -75,6 +75,10 @@ def process_papers(self, job_id: str) -> dict:
                 citation_count += service.resolve_openalex_citations(raw.payload, ps.paper_id)
         db.commit()
 
+        # Update author primary country (majority vote over affiliations)
+        country_updated = service.update_author_primary_countries()
+        db.commit()
+
         job.papers_processed = processed
         job.status = JobStatus.PROCESSED
         db.commit()

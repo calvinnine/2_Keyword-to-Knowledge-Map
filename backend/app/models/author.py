@@ -29,6 +29,11 @@ class Author(Base):
     paper_count: Mapped[int] = mapped_column(Integer, default=0)
     citation_count: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Derived from affiliation majority vote across all papers — never inferred from name/ethnicity.
+    # Populated by processing pipeline; null until at least one affiliation is resolved.
+    primary_country_code: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
+    primary_country_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     extra: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
