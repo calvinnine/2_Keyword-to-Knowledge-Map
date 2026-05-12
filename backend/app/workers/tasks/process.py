@@ -9,6 +9,7 @@ from app.database import SessionLocal
 from app.models.job import AnalysisJob, JobStatus
 from app.models.raw import RawPayload
 from app.processing.ingestion import IngestionService
+from app.processing.sci_classifier import classify_papers
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -79,19 +80,24 @@ def process_papers(self, job_id: str) -> dict:
         country_updated = service.update_author_primary_countries()
         db.commit()
 
+        # SCI/SSCI/ESCI classification (heuristic, best-effort)
+        sci_classified = classify_papers(db, job_uuid)
+        db.commit()
+
         job.papers_processed = processed
         job.status = JobStatus.PROCESSED
         db.commit()
 
         logger.info(
-            "Processed job %s: %d papers, %d duplicates skipped, %d citations resolved",
-            job_id, processed, deduped, citation_count,
+            "Processed job %s: %d papers, %d duplicates skipped, %d citations resolved, %d sci-classified",
+            job_id, processed, deduped, citation_count, sci_classified,
         )
         return {
             "job_id": job_id,
             "processed": processed,
             "deduped": deduped,
             "citations": citation_count,
+            "sci_classified": sci_classified,
         }
     except Exception as exc:
         logger.exception("process_papers failed for job %s", job_id)
