@@ -38,6 +38,7 @@ export interface JobRead extends JobListItem {
   error_message: string | null;
   completed_at: string | null;
   params: Record<string, unknown> | null;
+  insight: string | null;
 }
 
 export interface JobCreatePayload {

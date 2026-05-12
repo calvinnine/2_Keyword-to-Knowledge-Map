@@ -32,3 +32,6 @@ pandas==2.2.3
 # Utilities
 python-dotenv==1.0.1
 structlog==24.4.0
+
+# Claude AI
+anthropic==0.40.0

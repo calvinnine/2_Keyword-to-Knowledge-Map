@@ -71,5 +71,6 @@ class JobRead(JobListItem):
     error_message: str | None
     completed_at: datetime | None
     params: dict[str, Any] | None
+    insight: str | None = None
 
     model_config = {"from_attributes": True}

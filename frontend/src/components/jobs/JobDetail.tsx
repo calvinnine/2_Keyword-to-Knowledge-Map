@@ -124,6 +124,24 @@ export function JobDetail({ jobId }: { jobId: string }) {
         ) : null}
       </Card>
 
+      {j.insight ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <span>AI 인사이트</span>
+              <Badge variant="accent">Claude</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardBody className="text-sm leading-relaxed text-[var(--color-fg)]">
+            {j.insight.split("\n\n").map((para, i) => (
+              <p key={i} className={i > 0 ? "mt-3" : ""}>
+                {para}
+              </p>
+            ))}
+          </CardBody>
+        </Card>
+      ) : null}
+
       <div className="flex items-center justify-between">
         <Tabs
           value={tab}
