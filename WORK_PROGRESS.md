@@ -158,7 +158,31 @@ Phase 6: NTIS overlay 구현 완료 (API 키 신청 후 활성화).
 
 ---
 
+### [2026-05-12] 첫 End-to-End 파이프라인 성공 + Ingestion 버그픽스 3건
+
+#### ✅ 인제션 FK/중복 버그 3건 픽스
+- `processing/ingestion.py` `_get_or_create_institution`: `flush()` 추가 — Institution row가 DB에 있어야 `author_affiliations`가 FK 참조 가능
+- `processing/ingestion.py` OpenAlex/S2 paper 저장 후 `flush()` 추가 — paper row가 DB에 있어야 child FK 참조 가능
+- `_paper_author_seen` + `_paper_keyword_seen` set 추가 — 같은 논문이 OpenAlex+S2 양쪽 수집 시 dedup 후 같은 paper_id로 중복 삽입되는 문제 해결
+
+#### ✅ 첫 End-to-End 실행 성공 (graph neural network, 2023–2024, 100편)
+- 수집: OpenAlex+S2 합쳐 200편
+- 처리: DOI/title dedup으로 183편 정규화
+- 분석: 논문(183n/64e/135c) + 저자(981n/2651e/173c) + 키워드(370n/1096e/241c) 네트워크 생성
+- UI에서 4탭(논문·저자·키워드·그래프) 결과 정상 표시
+- Sigma.js 인터랙티브 시각화 정상 동작 (Louvain 색상 + PageRank 노드 크기)
+
+#### ⚠️ 발견된 추가 개선사항
+- 저자 탭의 `논문 수`·`인용 수` 컬럼이 0으로 표시 — 집계 컬럼이 분석 단계에서 채워지지 않음
+- Celery worker가 first-run 시 `analyzing` 상태에서 hang하는 경우 발생 — 직접 실행 시 8초만에 완료. 재현 후 원인 파악 필요
+- `eigenvector_centrality_numpy` 경고 — disconnected graph에서 동작 불일치 (현재 처리 무시)
+
+---
+
 ## 다음 단계
 
+- [ ] 분석 단계 author 집계 컬럼(`paper_count`, `citation_count`) 채우기
+- [ ] Celery worker analyze 단계 hang 원인 분석
+- [ ] 추가 테스트 돌리면서 개선사항 발굴
 - [ ] 프론트엔드: NTIS 비교 결과 시각화 패널
 - [ ] 프론트엔드: 고급 필터링, 결과 내보내기
