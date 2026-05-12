@@ -123,18 +123,17 @@ def _build_prompt(
 
 
 def generate_insight(db: Session, job_id: uuid.UUID) -> str | None:
-    """Return a Claude-generated insight string, or None if skipped/failed."""
-    if not settings.anthropic_api_key:
-        logger.info("ANTHROPIC_API_KEY not set — skipping insight generation")
+    """Return an LLM-generated insight string via Groq, or None if skipped/failed."""
+    if not settings.groq_api_key:
+        logger.info("GROQ_API_KEY not set — skipping insight generation")
         return None
 
     try:
-        import anthropic
+        from openai import OpenAI
     except ImportError:
-        logger.warning("anthropic package not installed — skipping insight generation")
+        logger.warning("openai package not installed — skipping insight generation")
         return None
 
-    # Fetch graph results
     stmt = select(GraphResult).where(GraphResult.job_id == job_id)
     graph_rows = list(db.execute(stmt).scalars().all())
     graphs: dict[str, GraphResult] = {g.graph_type: g for g in graph_rows}
@@ -167,13 +166,16 @@ def generate_insight(db: Session, job_id: uuid.UUID) -> str | None:
     )
 
     try:
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        message = client.messages.create(
+        client = OpenAI(
+            api_key=settings.groq_api_key,
+            base_url=settings.insight_base_url,
+        )
+        response = client.chat.completions.create(
             model=settings.insight_model,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
-        return message.content[0].text
+        return response.choices[0].message.content
     except Exception:
-        logger.exception("Claude insight generation failed for job %s", job_id)
+        logger.exception("Groq insight generation failed for job %s", job_id)
         return None
