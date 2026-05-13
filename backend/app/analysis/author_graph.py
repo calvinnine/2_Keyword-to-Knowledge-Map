@@ -20,7 +20,19 @@ logger = logging.getLogger(__name__)
 _MIN_COAUTHORSHIP_WEIGHT = 1
 
 
-def build_author_graph(db: Session, job_id: uuid.UUID) -> GraphResult:
+def _paper_id_subquery(job_id: uuid.UUID, publication_scope: str):
+    """Subquery returning paper IDs for a job, filtered by scope."""
+    from app.analysis.paper_graph import _scope_filter
+    stmt = select(Paper.id).where(Paper.job_id == job_id)
+    clause = _scope_filter(publication_scope)
+    if clause is not None:
+        stmt = stmt.where(clause)
+    return stmt
+
+
+def build_author_graph(
+    db: Session, job_id: uuid.UUID, publication_scope: str = "all"
+) -> GraphResult:
     """Build co-authorship graph for all authors in job corpus."""
 
     # Fetch all (paper_id, author_id) pairs for papers in this job
@@ -28,7 +40,7 @@ def build_author_graph(db: Session, job_id: uuid.UUID) -> GraphResult:
         select(PaperAuthor.paper_id, PaperAuthor.author_id)
         .where(
             PaperAuthor.paper_id.in_(
-                select(Paper.id).where(Paper.job_id == job_id)
+                _paper_id_subquery(job_id, publication_scope)
             )
         )
     ).all()

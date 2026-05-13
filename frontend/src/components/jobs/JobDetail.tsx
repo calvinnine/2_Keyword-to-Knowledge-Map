@@ -15,6 +15,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { Badge } from "@/components/ui/Badge";
 import { JobStatusBadge } from "./JobStatusBadge";
 import { formatDateTime, formatNumber } from "@/lib/utils";
+import { PUBLICATION_SCOPE_OPTIONS } from "@/lib/types/api";
 import type { GraphType, Intent } from "@/lib/types/api";
 
 type TabKey = "papers" | "authors" | "keywords" | "graphs";
@@ -78,6 +79,8 @@ export function JobDetail({ jobId }: { jobId: string }) {
   const intent = j.params?.intent as Intent | undefined;
   const originalQuery = j.params?.original_query as string | undefined;
   const isAnalyzed = j.status === "completed";
+  const scopeLabel =
+    PUBLICATION_SCOPE_OPTIONS.find((o) => o.value === j.publication_scope)?.label ?? "전체";
 
   return (
     <div className="space-y-6">
@@ -104,7 +107,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
             ) : null}
           </div>
         </CardHeader>
-        <CardBody className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-4">
+        <CardBody className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-5">
           <Stat label="최대 논문" value={formatNumber(j.max_papers)} />
           <Stat
             label="연도"
@@ -114,6 +117,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
                 : "전체 기간"
             }
           />
+          <Stat label="논문 범위" value={scopeLabel} />
           <Stat label="수집됨" value={formatNumber(j.papers_collected)} />
           <Stat label="정규화됨" value={formatNumber(j.papers_processed)} />
         </CardBody>

@@ -31,13 +31,14 @@ def analyze_graphs(self, job_id: str) -> dict:
         job.status = JobStatus.ANALYZING
         db.commit()
 
+        scope = job.publication_scope or "all"
         results = {}
         for label, builder in [
             ("paper", build_paper_graph),
             ("author", build_author_graph),
             ("keyword", build_keyword_graph),
         ]:
-            graph = builder(db, job_uuid)
+            graph = builder(db, job_uuid, publication_scope=scope)
             db.flush()
             compute_centrality(db, graph)
             compute_clusters(db, graph)

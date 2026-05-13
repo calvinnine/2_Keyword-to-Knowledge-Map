@@ -20,14 +20,17 @@ logger = logging.getLogger(__name__)
 _MIN_COOCCURRENCE_WEIGHT = 2
 
 
-def build_keyword_graph(db: Session, job_id: uuid.UUID) -> GraphResult:
+def build_keyword_graph(
+    db: Session, job_id: uuid.UUID, publication_scope: str = "all"
+) -> GraphResult:
     """Build keyword co-occurrence graph."""
+    from app.analysis.author_graph import _paper_id_subquery
 
     rows = db.execute(
         select(PaperKeyword.paper_id, PaperKeyword.keyword_id)
         .where(
             PaperKeyword.paper_id.in_(
-                select(Paper.id).where(Paper.job_id == job_id)
+                _paper_id_subquery(job_id, publication_scope)
             )
         )
     ).all()

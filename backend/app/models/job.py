@@ -39,6 +39,9 @@ class AnalysisJob(Base):
     year_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # publication_types: comma-separated or stored as JSON
     publication_types: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Publication scope filter applied at graph-build time (A안: collect all, filter at analysis)
+    # 'all' | 'sci_ssci' | 'scie'
+    publication_scope: Mapped[str] = mapped_column(String(20), default="all", nullable=False)
 
     # Progress tracking
     papers_collected: Mapped[int] = mapped_column(Integer, default=0)

@@ -31,10 +31,23 @@ export interface JobListItem {
   updated_at: string;
 }
 
+export type PublicationScope = "all" | "sci_ssci" | "scie";
+
+export const PUBLICATION_SCOPE_OPTIONS: {
+  value: PublicationScope;
+  label: string;
+  description: string;
+}[] = [
+  { value: "all", label: "전체", description: "수집된 모든 논문" },
+  { value: "sci_ssci", label: "SCI/SSCI", description: "자연과학 + 사회과학 핵심 저널" },
+  { value: "scie", label: "SCIE", description: "자연과학 저널 (SCIE 기준)" },
+];
+
 export interface JobRead extends JobListItem {
   year_start: number | null;
   year_end: number | null;
   publication_types: string[] | null;
+  publication_scope: PublicationScope;
   error_message: string | null;
   completed_at: string | null;
   params: Record<string, unknown> | null;
@@ -47,6 +60,7 @@ export interface JobCreatePayload {
   year_start?: number | null;
   year_end?: number | null;
   publication_types?: string[] | null;
+  publication_scope?: PublicationScope;
 }
 
 export interface JobFromQueryPayload {
@@ -55,6 +69,7 @@ export interface JobFromQueryPayload {
   year_start?: number | null;
   year_end?: number | null;
   publication_types?: string[] | null;
+  publication_scope?: PublicationScope;
 }
 
 export interface ParsedQuery {

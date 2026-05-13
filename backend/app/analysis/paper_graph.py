@@ -31,13 +31,27 @@ _EMBEDDING_MAX_PAPERS = 500          # cap for large jobs (top N by citation cou
 _EMBEDDING_MAX_NEIGHBORS = 5         # max embedding edges per paper
 
 
-def build_paper_graph(db: Session, job_id: uuid.UUID) -> GraphResult:
+def _scope_filter(scope: str):
+    """Return SQLAlchemy filter clause for sci_classification based on scope."""
+    from sqlalchemy import or_
+    if scope == "sci_ssci":
+        return Paper.sci_classification.in_(["SCIE", "SSCI"])
+    if scope == "scie":
+        return Paper.sci_classification == "SCIE"
+    return None  # "all" — no filter
+
+
+def build_paper_graph(
+    db: Session, job_id: uuid.UUID, publication_scope: str = "all"
+) -> GraphResult:
     """Build the paper citation graph for a job and persist it."""
 
-    # Load all papers for this job
-    papers = db.execute(
-        select(Paper).where(Paper.job_id == job_id)
-    ).scalars().all()
+    # Load papers for this job, filtered by publication_scope
+    stmt = select(Paper).where(Paper.job_id == job_id)
+    scope_clause = _scope_filter(publication_scope)
+    if scope_clause is not None:
+        stmt = stmt.where(scope_clause)
+    papers = db.execute(stmt).scalars().all()
     paper_ids = {p.id for p in papers}
     paper_id_to_node: dict[uuid.UUID, uuid.UUID] = {}
 

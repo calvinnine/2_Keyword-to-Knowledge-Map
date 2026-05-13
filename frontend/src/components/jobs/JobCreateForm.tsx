@@ -9,7 +9,8 @@ import { Card, CardBody, CardDescription, CardHeader, CardTitle } from "@/compon
 import { Input, Label, Textarea } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
 import { Badge } from "@/components/ui/Badge";
-import type { Intent, ParsedQuery } from "@/lib/types/api";
+import { PUBLICATION_SCOPE_OPTIONS } from "@/lib/types/api";
+import type { Intent, ParsedQuery, PublicationScope } from "@/lib/types/api";
 
 type Mode = "keyword" | "query";
 
@@ -28,6 +29,7 @@ export function JobCreateForm() {
   const [maxPapers, setMaxPapers] = useState(20_000);
   const [yearStart, setYearStart] = useState<string>("");
   const [yearEnd, setYearEnd] = useState<string>("");
+  const [scope, setScope] = useState<PublicationScope>("all");
 
   // keyword mode
   const [keyword, setKeyword] = useState("");
@@ -52,6 +54,7 @@ export function JobCreateForm() {
           max_papers: maxPapers,
           year_start: yearStartNum,
           year_end: yearEndNum,
+          publication_scope: scope,
         });
       }
       return jobsApi.createFromQuery({
@@ -59,6 +62,7 @@ export function JobCreateForm() {
         max_papers: maxPapers,
         year_start: yearStartNum,
         year_end: yearEndNum,
+        publication_scope: scope,
       });
     },
     onSuccess: (job) => router.push(`/jobs/${job.id}`),
@@ -183,6 +187,36 @@ export function JobCreateForm() {
                 value={yearEnd}
                 onChange={(e) => setYearEnd(e.target.value)}
               />
+            </div>
+          </div>
+
+          <div>
+            <Label hint="그래프 분석 시 적용">논문 범위</Label>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:gap-4">
+              {PUBLICATION_SCOPE_OPTIONS.map((opt) => (
+                <label
+                  key={opt.value}
+                  className={[
+                    "flex cursor-pointer items-start gap-3 rounded-[var(--radius-md)] border px-4 py-3 text-sm transition-colors",
+                    scope === opt.value
+                      ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
+                      : "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-fg)] hover:border-[var(--color-accent-soft)]",
+                  ].join(" ")}
+                >
+                  <input
+                    type="radio"
+                    name="publication_scope"
+                    value={opt.value}
+                    checked={scope === opt.value}
+                    onChange={() => setScope(opt.value)}
+                    className="mt-0.5 accent-[var(--color-accent)]"
+                  />
+                  <span className="flex flex-col gap-0.5">
+                    <span className="font-medium">{opt.label}</span>
+                    <span className="text-xs text-[var(--color-fg-muted)]">{opt.description}</span>
+                  </span>
+                </label>
+              ))}
             </div>
           </div>
 
