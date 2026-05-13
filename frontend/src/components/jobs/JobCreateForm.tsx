@@ -209,7 +209,7 @@ export function JobCreateForm() {
 
           {/* Publication scope — checkbox multi-select */}
           <div>
-            <Label hint="그래프 분석 시 적용 · 복수 선택 가능">저널 분류 필터</Label>
+            <Label hint="Clarivate Web of Science 기준 · 복수 선택 가능">저널 분류 필터</Label>
             <div className="mt-2 flex flex-wrap gap-2">
               {/* 전체 — deselects all indexes */}
               <label
