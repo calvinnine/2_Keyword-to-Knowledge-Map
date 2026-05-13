@@ -230,6 +230,7 @@ export interface NtisOverview {
   ntis_project_count: number;
   comparative_match_count: number;
   projects: NtisProjectSummary[];
+  last_run_error?: string | null;
 }
 
 export interface NtisOverlayTriggerResponse {

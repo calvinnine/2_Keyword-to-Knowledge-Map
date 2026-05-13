@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from app.analysis.comparative import run_comparative_analysis
 from app.analysis.domestic_score import compute_domestic_scores
-from app.collectors.ntis import NtisCollector
+from app.collectors.ntis import NtisCollector, NtisApiError
 from app.config import settings
 from app.database import SessionLocal
 from app.models.job import AnalysisJob, JobStatus
@@ -48,42 +48,54 @@ def run_ntis_overlay(self, job_id: str) -> dict:
                 f"NTIS overlay requires a completed job; current status: {job.status}"
             )
 
-        keyword = job.keyword
+        # NTIS is a Korean-language index — prefer the original Korean keyword
+        # over its English translation when the job was auto-translated.
+        keyword = (job.params or {}).get("original_keyword") or job.keyword
         year_start = job.year_start
         year_end = job.year_end
 
         projects_collected = 0
         paper_direct_matches = 0
+        ntis_api_error: str | None = None
 
         if settings.ntis_api_key:
             service = NtisIngestionService(db, job_uuid)
 
-            with NtisCollector() as collector:
-                # --- 1. 과제 수집 -------------------------------------------
-                for raw in collector.search_projects(
-                    keyword=keyword,
-                    max_results=_MAX_NTIS_PROJECT_RESULTS,
-                    year_start=year_start,
-                    year_end=year_end,
-                ):
-                    project = service.ingest_project(raw)
-                    if project:
-                        projects_collected += 1
-                    if projects_collected % 100 == 0 and projects_collected > 0:
-                        db.flush()
-                db.commit()
-                logger.info("NTIS projects collected: %d for job %s", projects_collected, job_id)
+            try:
+                with NtisCollector() as collector:
+                    # --- 1. 과제 수집 -------------------------------------------
+                    for raw in collector.search_projects(
+                        keyword=keyword,
+                        max_results=_MAX_NTIS_PROJECT_RESULTS,
+                        year_start=year_start,
+                        year_end=year_end,
+                    ):
+                        project = service.ingest_project(raw)
+                        if project:
+                            projects_collected += 1
+                        if projects_collected % 100 == 0 and projects_collected > 0:
+                            db.flush()
+                    db.commit()
+                    logger.info("NTIS projects collected: %d for job %s", projects_collected, job_id)
 
-                # --- 2. 논문 성과 수집 → 직접 매핑 ----------------------------
-                paper_direct_matches = _collect_and_match_papers(
-                    db=db,
-                    collector=collector,
-                    job_uuid=job_uuid,
-                    keyword=keyword,
-                    year_start=year_start,
-                    year_end=year_end,
-                )
-                db.commit()
+                    # --- 2. 논문 성과 수집 → 직접 매핑 ----------------------------
+                    paper_direct_matches = _collect_and_match_papers(
+                        db=db,
+                        collector=collector,
+                        job_uuid=job_uuid,
+                        keyword=keyword,
+                        year_start=year_start,
+                        year_end=year_end,
+                    )
+                    db.commit()
+            except NtisApiError as exc:
+                # NTIS rejected the call (IP whitelist / quota / bad key).
+                # Record the message but don't fail the whole task —
+                # comparative analysis still runs against whatever projects
+                # might already exist for this job.
+                ntis_api_error = f"NTIS API: {exc}"
+                logger.warning("NTIS API error for job %s: %s", job_id, exc)
+                db.rollback()
 
         else:
             logger.info(
@@ -113,7 +125,21 @@ def run_ntis_overlay(self, job_id: str) -> dict:
             "paper_direct_matches": paper_direct_matches,
             "comparative_matches": comparative_count,
             "domestic_scores_updated": domestic_updated,
+            "ntis_api_error": ntis_api_error,
         }
+        # Persist the last-run summary on AnalysisJob.params so the overview
+        # API can surface API errors / status to the frontend without needing
+        # to query Celery's result backend.
+        current_params = dict(job.params or {})
+        current_params["ntis_last_run"] = {
+            "projects_collected": projects_collected,
+            "paper_direct_matches": paper_direct_matches,
+            "comparative_matches": comparative_count,
+            "error": ntis_api_error,
+        }
+        job.params = current_params
+        db.commit()
+
         logger.info("NTIS overlay complete for job %s: %s", job_id, result)
         return result
 
@@ -160,17 +186,19 @@ def _collect_and_match_papers(
         if p.title_normalized
     }
 
-    # NTIS paper outcomes don't carry a ProjectNumber directly usable as FK,
-    # so we match to the first NtisProject in this job as a best-effort link.
-    # A fuller implementation would cross-reference by ProjectID field.
-    first_project = db.execute(
-        select(NtisProject).where(NtisProject.job_id == job_uuid).limit(1)
-    ).scalar_one_or_none()
-
-    if not first_project:
+    # Pre-load all NtisProjects for this job into a single dict keyed by
+    # ntis_project_id (eliminates the per-outcome N+1 lookup).
+    project_rows = db.execute(
+        select(NtisProject).where(NtisProject.job_id == job_uuid)
+    ).scalars().all()
+    if not project_rows:
         return 0
+    project_by_ntis_id: dict[str, NtisProject] = {
+        p.ntis_project_id: p for p in project_rows if p.ntis_project_id
+    }
+    first_project = project_rows[0]
 
-    matched = 0
+    rows: list[dict] = []
     seen_paper_ids: set[uuid.UUID] = set()
 
     for ntis_paper in collector.search_papers(
@@ -180,44 +208,37 @@ def _collect_and_match_papers(
         year_end=year_end,
     ):
         ntis_title = ntis_paper.get("ResultTitle") or ""
-        ntis_title_norm = _norm_title(ntis_title)
+        paper_id = title_norm_index.get(_norm_title(ntis_title))
+        if not paper_id or paper_id in seen_paper_ids:
+            continue
         ntis_proj_id = ntis_paper.get("ProjectID")
+        project = (
+            project_by_ntis_id.get(str(ntis_proj_id)) if ntis_proj_id else None
+        ) or first_project
+        rows.append({
+            "id": uuid.uuid4(),
+            "job_id": job_uuid,
+            "ntis_project_id": project.id,
+            "matched_paper_id": paper_id,
+            "matched_author_id": None,
+            "match_type": "paper_outcome_direct",
+            "similarity_score": 1.0,
+            "match_details": {
+                "ntis_result_id": ntis_paper.get("ResultID"),
+                "ntis_title": ntis_title,
+                "sci_type": ntis_paper.get("SciType"),
+                "journal": ntis_paper.get("JournalName"),
+                "issn": ntis_paper.get("IssnNumber"),
+            },
+        })
+        seen_paper_ids.add(paper_id)
 
-        # Find corresponding NtisProject by ProjectID if available
-        project = first_project
-        if ntis_proj_id:
-            linked = db.execute(
-                select(NtisProject).where(
-                    NtisProject.job_id == job_uuid,
-                    NtisProject.ntis_project_id == str(ntis_proj_id),
-                )
-            ).scalar_one_or_none()
-            if linked:
-                project = linked
+    if rows:
+        from sqlalchemy import insert
+        db.execute(insert(ComparativeResult), rows)
 
-        # Title normalisation match
-        paper_id = title_norm_index.get(ntis_title_norm)
-        if paper_id and paper_id not in seen_paper_ids:
-            db.add(ComparativeResult(
-                id=uuid.uuid4(),
-                job_id=job_uuid,
-                ntis_project_id=project.id,
-                matched_paper_id=paper_id,
-                match_type="paper_outcome_direct",
-                similarity_score=1.0,
-                match_details={
-                    "ntis_result_id": ntis_paper.get("ResultID"),
-                    "ntis_title": ntis_title,
-                    "sci_type": ntis_paper.get("SciType"),
-                    "journal": ntis_paper.get("JournalName"),
-                    "issn": ntis_paper.get("IssnNumber"),
-                },
-            ))
-            seen_paper_ids.add(paper_id)
-            matched += 1
-
-    logger.info("NTIS paper direct matches: %d for job %s", matched, job_uuid)
-    return matched
+    logger.info("NTIS paper direct matches: %d for job %s", len(rows), job_uuid)
+    return len(rows)
 
 
 def _norm_title(title: str) -> str:

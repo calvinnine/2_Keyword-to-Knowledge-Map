@@ -14,11 +14,12 @@ API 키가 없으면 빈 제너레이터를 반환하여 파이프라인을 중�
 
 import logging
 from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 from xml.etree import ElementTree as ET
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
 from app.config import settings
 
@@ -29,6 +30,11 @@ _PROJECT_PATH = "/rndopen/openApi/public_project"
 _RESULT_PATH = "/rndopen/openApi/public_result"
 _RELATED_PATH = "/rndopen/openApi/ConnectionContent"
 _PAGE_SIZE = 100  # NTIS API max per page
+_PARALLEL_WORKERS = 4  # concurrent page fetches; NTIS handles modest concurrency well
+
+
+class NtisApiError(RuntimeError):
+    """Raised when NTIS returns an `<error>` XML body (HTTP 200)."""
 
 
 class NtisCollector:
@@ -36,9 +42,14 @@ class NtisCollector:
 
     def __init__(self) -> None:
         self._api_key = settings.ntis_api_key
+        # `limits` enables connection pool reuse across parallel page fetches.
         self._client = httpx.Client(
             base_url=_BASE_URL,
             timeout=30.0,
+            limits=httpx.Limits(
+                max_connections=_PARALLEL_WORKERS * 2,
+                max_keepalive_connections=_PARALLEL_WORKERS,
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -52,15 +63,16 @@ class NtisCollector:
         year_start: int | None = None,
         year_end: int | None = None,
     ) -> Generator[dict, None, None]:
-        """Yield parsed project dicts from 과제검색 API."""
+        """Yield parsed project dicts from 과제검색 API.
+
+        Strategy: fetch page 1 synchronously to learn TOTALHITS, then fetch the
+        remaining pages in parallel via a thread pool. NTIS handles 4-way
+        concurrency comfortably, cutting wall-clock time roughly 4×.
+        """
         if not self._api_key:
             logger.info("NTIS_API_KEY not set; skipping project collection")
             return
 
-        yielded = 0
-        start = 1
-
-        # 연도 필터를 addQuery로 지정
         add_query_parts = []
         if year_start and year_end:
             add_query_parts.append(f"PY={year_start}/MORE,{year_end}/UNDER")
@@ -68,46 +80,28 @@ class NtisCollector:
             add_query_parts.append(f"PY={year_start}/MORE")
         elif year_end:
             add_query_parts.append(f"PY={year_end}/UNDER")
-
         add_query = "&".join(add_query_parts)
 
-        while yielded < max_results:
-            batch = min(_PAGE_SIZE, max_results - yielded)
-            try:
-                root = self._fetch_xml(
-                    path=_PROJECT_PATH,
-                    params={
-                        "apprvKey": self._api_key,
-                        "collection": "project",
-                        "SRWR": keyword,
-                        "searchFd": "BI",
-                        "addQuery": add_query,
-                        "startPosition": start,
-                        "displayCnt": batch,
-                        "searchRnkn": "DATE/DESC",
-                    },
-                )
-            except Exception as exc:
-                logger.warning("NTIS project fetch failed at start=%d: %s", start, exc)
-                break
+        def build_params(start_pos: int, batch: int) -> dict:
+            return {
+                "apprvKey": self._api_key,
+                "collection": "project",
+                "SRWR": keyword,
+                "searchFd": "BI",
+                "addQuery": add_query,
+                "startPosition": start_pos,
+                "displayCnt": batch,
+                "searchRnkn": "DATE/DESC",
+            }
 
-            hits = root.findall(".//RESULTSET/HIT")
-            if not hits:
-                break
-
-            for hit in hits:
-                if yielded >= max_results:
-                    return
-                yield _parse_project_hit(hit)
-                yielded += 1
-
-            total_el = root.find(".//TOTALHITS")
-            total = int(total_el.text) if total_el is not None and total_el.text else 0
-            if yielded >= total:
-                break
-            start += len(hits)
-
-        logger.info("NTIS collected %d projects for keyword=%r", yielded, keyword)
+        yield from self._paginated_search(
+            path=_PROJECT_PATH,
+            build_params=build_params,
+            parser=_parse_project_hit,
+            max_results=max_results,
+            label="project",
+            keyword=keyword,
+        )
 
     # ------------------------------------------------------------------
     # Public: 성과(논문) 검색
@@ -125,9 +119,6 @@ class NtisCollector:
             logger.info("NTIS_API_KEY not set; skipping paper outcome collection")
             return
 
-        yielded = 0
-        start = 1
-
         add_query_parts = ["DBT=PAP"]
         if year_start and year_end:
             add_query_parts.append(f"PY={year_start}/MORE,{year_end}/UNDER")
@@ -135,44 +126,113 @@ class NtisCollector:
             add_query_parts.append(f"PY={year_start}/MORE")
         elif year_end:
             add_query_parts.append(f"PY={year_end}/UNDER")
+        add_query = "&".join(add_query_parts)
 
-        while yielded < max_results:
-            batch = min(_PAGE_SIZE, max_results - yielded)
-            try:
-                root = self._fetch_xml(
-                    path=_RESULT_PATH,
-                    params={
-                        "apprvKey": self._api_key,
-                        "collection": "rpaper",
-                        "SRWR": keyword,
-                        "searchFd": "BI",
-                        "addQuery": "&".join(add_query_parts),
-                        "startPosition": start,
-                        "displayCnt": batch,
-                        "searchRnkn": "DATE/DESC",
-                    },
-                )
-            except Exception as exc:
-                logger.warning("NTIS paper fetch failed at start=%d: %s", start, exc)
-                break
+        def build_params(start_pos: int, batch: int) -> dict:
+            return {
+                "apprvKey": self._api_key,
+                "collection": "rpaper",
+                "SRWR": keyword,
+                "searchFd": "BI",
+                "addQuery": add_query,
+                "startPosition": start_pos,
+                "displayCnt": batch,
+                "searchRnkn": "DATE/DESC",
+            }
 
-            hits = root.findall(".//RESULTSET/HIT")
-            if not hits:
-                break
+        yield from self._paginated_search(
+            path=_RESULT_PATH,
+            build_params=build_params,
+            parser=_parse_paper_hit,
+            max_results=max_results,
+            label="paper outcome",
+            keyword=keyword,
+        )
 
-            for hit in hits:
-                if yielded >= max_results:
-                    return
-                yield _parse_paper_hit(hit)
+    # ------------------------------------------------------------------
+    # Internal: parallel pagination
+    # ------------------------------------------------------------------
+
+    def _paginated_search(
+        self,
+        path: str,
+        build_params,
+        parser,
+        max_results: int,
+        label: str,
+        keyword: str,
+    ) -> Generator[dict, None, None]:
+        """Fetch page 1, then parallelise the remaining pages."""
+        # --- Page 1: synchronous to learn TOTALHITS ---
+        try:
+            root = self._fetch_xml(path=path, params=build_params(1, min(_PAGE_SIZE, max_results)))
+        except NtisApiError:
+            # Permanent error (IP whitelist / bad key / quota) — let it bubble
+            # up so callers can surface a useful message to the user.
+            raise
+        except Exception as exc:
+            logger.warning("NTIS %s fetch failed at start=1: %s", label, exc)
+            return
+
+        hits = root.findall(".//RESULTSET/HIT")
+        total_el = root.find(".//TOTALHITS")
+        total = int(total_el.text) if total_el is not None and total_el.text else 0
+        target = min(max_results, total) if total else max_results
+
+        yielded = 0
+        for hit in hits:
+            if yielded >= target:
+                logger.info("NTIS collected %d %ss for keyword=%r", yielded, label, keyword)
+                return
+            yield parser(hit)
+            yielded += 1
+
+        if yielded >= target or not hits:
+            logger.info("NTIS collected %d %ss for keyword=%r", yielded, label, keyword)
+            return
+
+        # --- Remaining pages: parallel ---
+        page_size = len(hits)  # respect server's actual page size
+        page_starts: list[int] = []
+        start = yielded + 1
+        while start <= target:
+            page_starts.append(start)
+            start += page_size
+
+        results: dict[int, list[dict]] = {}
+        with ThreadPoolExecutor(max_workers=_PARALLEL_WORKERS) as pool:
+            futures = {
+                pool.submit(
+                    self._fetch_page_items,
+                    path,
+                    build_params(sp, min(page_size, target - sp + 1)),
+                    parser,
+                ): sp
+                for sp in page_starts
+            }
+            for fut in as_completed(futures):
+                sp = futures[fut]
+                try:
+                    results[sp] = fut.result()
+                except Exception as exc:
+                    logger.warning("NTIS %s fetch failed at start=%d: %s", label, sp, exc)
+                    results[sp] = []
+
+        # Yield in ascending startPosition order for deterministic output
+        for sp in sorted(results):
+            for item in results[sp]:
+                if yielded >= target:
+                    break
+                yield item
                 yielded += 1
-
-            total_el = root.find(".//TOTALHITS")
-            total = int(total_el.text) if total_el is not None and total_el.text else 0
-            if yielded >= total:
+            if yielded >= target:
                 break
-            start += len(hits)
 
-        logger.info("NTIS collected %d paper outcomes for keyword=%r", yielded, keyword)
+        logger.info("NTIS collected %d %ss for keyword=%r", yielded, label, keyword)
+
+    def _fetch_page_items(self, path: str, params: dict, parser) -> list[dict]:
+        root = self._fetch_xml(path=path, params=params)
+        return [parser(hit) for hit in root.findall(".//RESULTSET/HIT")]
 
     # ------------------------------------------------------------------
     # Public: 연관콘텐츠 (과제 기반 유사 과제/논문)
@@ -236,12 +296,19 @@ class NtisCollector:
     @retry(
         stop=stop_after_attempt(4),
         wait=wait_exponential(multiplier=1, min=2, max=20),
+        retry=retry_if_not_exception_type(NtisApiError),
         reraise=True,
     )
     def _fetch_xml(self, path: str, params: dict) -> ET.Element:
         resp = self._client.get(path, params=params)
         resp.raise_for_status()
-        return ET.fromstring(resp.content)
+        root = ET.fromstring(resp.content)
+        # NTIS returns HTTP 200 with `<error>...</error>` body on auth/IP/quota
+        # failures. Surface these as exceptions so retries and callers can react.
+        if root.tag == "error":
+            msg = (root.text or "").strip() or "NTIS API error"
+            raise NtisApiError(msg)
+        return root
 
 
 # ---------------------------------------------------------------------------

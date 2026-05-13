@@ -62,6 +62,7 @@ class NtisOverviewResponse(BaseModel):
     ntis_project_count: int
     comparative_match_count: int
     projects: list[NtisProjectSummary]
+    last_run_error: str | None = None
 
 
 class AuthorMatrixItem(BaseModel):
@@ -129,11 +130,13 @@ def get_ntis_overview(job_id: uuid.UUID, db: Session = Depends(get_db)):
             s.total_budget = None
         return s
 
+    last_run = (job.params or {}).get("ntis_last_run") or {}
     return NtisOverviewResponse(
         job_id=job_id,
         ntis_project_count=len(projects),
         comparative_match_count=match_count,
         projects=[_to_summary(p) for p in projects],
+        last_run_error=last_run.get("error"),
     )
 
 

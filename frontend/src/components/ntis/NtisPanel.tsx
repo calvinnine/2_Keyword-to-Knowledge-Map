@@ -31,6 +31,7 @@ export function NtisPanel({ jobId }: { jobId: string }) {
   });
 
   const hasData = (overview.data?.ntis_project_count ?? 0) > 0;
+  const apiError = overview.data?.last_run_error;
 
   return (
     <div className="space-y-4">
@@ -71,9 +72,20 @@ export function NtisPanel({ jobId }: { jobId: string }) {
             기반 비교 분석만 실행됩니다.
           </CardBody>
         )}
-        {triggered && !hasData && (
+        {triggered && !hasData && !apiError && (
           <CardBody className="text-sm text-[var(--color-fg-muted)]">
             NTIS 데이터 수집 중… 잠시 후 자동으로 갱신됩니다.
+          </CardBody>
+        )}
+        {apiError && (
+          <CardBody className="border-t border-[var(--color-border)] bg-[var(--color-danger-soft)] text-sm text-[var(--color-danger)]">
+            NTIS 호출 실패: {apiError}
+            {apiError.includes("IP") && (
+              <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
+                NTIS Open API는 발급 시 등록한 IP에서만 호출 가능합니다.
+                ntis.go.kr 마이페이지에서 호출 IP를 추가하거나 키를 재발급하세요.
+              </p>
+            )}
           </CardBody>
         )}
       </Card>

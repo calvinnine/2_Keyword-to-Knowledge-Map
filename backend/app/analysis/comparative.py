@@ -18,7 +18,7 @@ import re
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, insert
 from sqlalchemy.orm import Session
 
 from app.models.ntis import NtisProject, ComparativeResult
@@ -37,6 +37,10 @@ def run_comparative_analysis(db: Session, job_id: uuid.UUID) -> int:
     """Match all NTIS projects for *job_id* against K2KM entities.
 
     Returns the total number of ComparativeResult rows inserted.
+
+    Performance: all matches are accumulated into a single list and inserted
+    via SQLAlchemy Core bulk insert at the end, avoiding the per-row ORM
+    overhead of `db.add(ComparativeResult(...))`.
     """
     projects = db.execute(
         select(NtisProject).where(NtisProject.job_id == job_id)
@@ -50,158 +54,185 @@ def run_comparative_analysis(db: Session, job_id: uuid.UUID) -> int:
     papers = db.execute(
         select(Paper).where(Paper.job_id == job_id)
     ).scalars().all()
+    paper_ids = [p.id for p in papers]
 
-    paper_keywords = _load_paper_keywords(db, [p.id for p in papers])
-    paper_authors = _load_paper_authors(db, [p.id for p in papers])
-    authors = {a.id: a for a in db.execute(select(Author)).scalars().all()}
+    paper_keywords = _load_paper_keywords(db, paper_ids)
+    paper_authors = _load_paper_authors(db, paper_ids)
+
+    # Restrict authors to those appearing in this job's papers (was: global)
+    job_author_ids: set[uuid.UUID] = set()
+    for aid_list in paper_authors.values():
+        job_author_ids.update(aid_list)
+
+    if job_author_ids:
+        authors = {
+            a.id: a
+            for a in db.execute(
+                select(Author).where(Author.id.in_(job_author_ids))
+            ).scalars().all()
+        }
+    else:
+        authors = {}
+
     author_affiliations = _load_author_affiliations(db, list(authors.keys()))
 
-    inserted = 0
+    # Pre-tokenise author affiliations once (was: per-project, per-author)
+    author_affil_token_sets: dict[uuid.UUID, list[tuple[str, set[str]]]] = {
+        aid: [(affil, _tokenise(affil)) for affil in affils]
+        for aid, affils in author_affiliations.items()
+    }
+
+    rows: list[dict] = []
     for project in projects:
-        inserted += _match_keywords(db, job_id, project, papers, paper_keywords)
-        inserted += _match_authors(db, job_id, project, paper_authors, authors)
-        inserted += _match_institutions(db, job_id, project, authors, author_affiliations)
+        _collect_keyword_matches(rows, job_id, project, papers, paper_keywords)
+        _collect_author_matches(rows, job_id, project, job_author_ids, authors)
+        _collect_institution_matches(rows, job_id, project, author_affil_token_sets)
+
+    if rows:
+        db.execute(insert(ComparativeResult), rows)
 
     logger.info(
         "Comparative analysis for job %s: %d NTIS projects → %d matches",
-        job_id, len(projects), inserted,
+        job_id, len(projects), len(rows),
     )
-    return inserted
+    return len(rows)
 
 
 # ---------------------------------------------------------------------------
 # Match strategy: keyword overlap
 # ---------------------------------------------------------------------------
 
-def _match_keywords(
-    db: Session,
+def _collect_keyword_matches(
+    rows: list[dict],
     job_id: uuid.UUID,
     project: NtisProject,
     papers: list[Paper],
     paper_keywords: dict[uuid.UUID, set[str]],
-) -> int:
+) -> None:
     ntis_kws = {_norm(k) for k in (project.keywords or []) if k}
     if not ntis_kws:
-        return 0
+        return
 
-    inserted = 0
+    ntis_kws_len = len(ntis_kws)
     for paper in papers:
-        paper_kws = paper_keywords.get(paper.id, set())
+        paper_kws = paper_keywords.get(paper.id)
         if not paper_kws:
             continue
+        # Quick rejection: if there's no intersection at all, skip the
+        # union calculation. This is the dominant inner-loop case.
         intersection = ntis_kws & paper_kws
-        union = ntis_kws | paper_kws
-        jaccard = len(intersection) / len(union) if union else 0.0
+        if not intersection:
+            continue
+        union_size = ntis_kws_len + len(paper_kws) - len(intersection)
+        jaccard = len(intersection) / union_size if union_size else 0.0
         if jaccard < _MIN_KEYWORD_JACCARD:
             continue
-        db.add(ComparativeResult(
-            id=uuid.uuid4(),
-            job_id=job_id,
-            ntis_project_id=project.id,
-            matched_paper_id=paper.id,
-            match_type="keyword_overlap",
-            similarity_score=jaccard,
-            match_details={"shared_keywords": sorted(intersection), "jaccard": jaccard},
-        ))
-        inserted += 1
-    return inserted
+        rows.append({
+            "id": uuid.uuid4(),
+            "job_id": job_id,
+            "ntis_project_id": project.id,
+            "matched_paper_id": paper.id,
+            "matched_author_id": None,
+            "match_type": "keyword_overlap",
+            "similarity_score": jaccard,
+            "match_details": {"shared_keywords": sorted(intersection), "jaccard": jaccard},
+        })
 
 
 # ---------------------------------------------------------------------------
 # Match strategy: author name
 # ---------------------------------------------------------------------------
 
-def _match_authors(
-    db: Session,
+def _collect_author_matches(
+    rows: list[dict],
     job_id: uuid.UUID,
     project: NtisProject,
-    paper_authors: dict[uuid.UUID, list[uuid.UUID]],  # paper_id → [author_id]
+    job_author_ids: set[uuid.UUID],
     authors: dict[uuid.UUID, Author],
-) -> int:
-    ntis_researchers = [_norm(r.get("name", "")) for r in (project.researchers or []) if r.get("name")]
+) -> None:
+    ntis_researchers = {
+        _norm(r.get("name", ""))
+        for r in (project.researchers or [])
+        if r.get("name")
+    }
     if not ntis_researchers:
-        return 0
+        return
 
-    # Collect unique author IDs appearing in this job's papers
-    job_author_ids: set[uuid.UUID] = set()
-    for aid_list in paper_authors.values():
-        job_author_ids.update(aid_list)
-
-    inserted = 0
-    matched_authors: set[uuid.UUID] = set()  # avoid duplicate rows per author
+    matched_authors: set[uuid.UUID] = set()
     for author_id in job_author_ids:
+        if author_id in matched_authors:
+            continue
         author = authors.get(author_id)
-        if not author or author_id in matched_authors:
+        if not author:
             continue
         display = _norm(author.name or "")
         if not display:
             continue
         if display in ntis_researchers:
-            db.add(ComparativeResult(
-                id=uuid.uuid4(),
-                job_id=job_id,
-                ntis_project_id=project.id,
-                matched_author_id=author_id,
-                match_type="author_name",
-                similarity_score=1.0,
-                match_details={"matched_name": author.name},
-            ))
+            rows.append({
+                "id": uuid.uuid4(),
+                "job_id": job_id,
+                "ntis_project_id": project.id,
+                "matched_paper_id": None,
+                "matched_author_id": author_id,
+                "match_type": "author_name",
+                "similarity_score": 1.0,
+                "match_details": {"matched_name": author.name},
+            })
             matched_authors.add(author_id)
-            inserted += 1
-    return inserted
 
 
 # ---------------------------------------------------------------------------
 # Match strategy: institution name
 # ---------------------------------------------------------------------------
 
-def _match_institutions(
-    db: Session,
+def _collect_institution_matches(
+    rows: list[dict],
     job_id: uuid.UUID,
     project: NtisProject,
-    authors: dict[uuid.UUID, Author],
-    author_affiliations: dict[uuid.UUID, list[str]],  # author_id → [raw affiliation strings]
-) -> int:
+    author_affil_token_sets: dict[uuid.UUID, list[tuple[str, set[str]]]],
+) -> None:
     performing_org = project.performing_org
     if not performing_org:
-        return 0
+        return
 
     ntis_tokens = _tokenise(performing_org)
     if not ntis_tokens:
-        return 0
+        return
 
-    inserted = 0
     matched_authors: set[uuid.UUID] = set()
-    for author_id, affiliations in author_affiliations.items():
+    for author_id, token_pairs in author_affil_token_sets.items():
         if author_id in matched_authors:
             continue
         best_score = 0.0
         best_affiliation = ""
-        for affil in affiliations:
-            affil_tokens = _tokenise(affil)
+        for affil, affil_tokens in token_pairs:
             if not affil_tokens:
                 continue
-            overlap = len(ntis_tokens & affil_tokens) / len(ntis_tokens | affil_tokens)
+            inter = len(ntis_tokens & affil_tokens)
+            if not inter:
+                continue
+            union = len(ntis_tokens) + len(affil_tokens) - inter
+            overlap = inter / union if union else 0.0
             if overlap > best_score:
                 best_score = overlap
                 best_affiliation = affil
         if best_score >= _MIN_INST_SCORE:
-            db.add(ComparativeResult(
-                id=uuid.uuid4(),
-                job_id=job_id,
-                ntis_project_id=project.id,
-                matched_author_id=author_id,
-                match_type="institution_name",
-                similarity_score=best_score,
-                match_details={
+            rows.append({
+                "id": uuid.uuid4(),
+                "job_id": job_id,
+                "ntis_project_id": project.id,
+                "matched_paper_id": None,
+                "matched_author_id": author_id,
+                "match_type": "institution_name",
+                "similarity_score": best_score,
+                "match_details": {
                     "ntis_org": performing_org,
                     "matched_affiliation": best_affiliation,
                     "token_jaccard": best_score,
                 },
-            ))
+            })
             matched_authors.add(author_id)
-            inserted += 1
-    return inserted
 
 
 # ---------------------------------------------------------------------------

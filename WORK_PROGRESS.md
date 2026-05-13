@@ -93,12 +93,44 @@ MVP Phase 1–4 구현 완료. 프론트엔드 웹앱 배포 준비 완료.
 - `docker-compose.yml` `api`·`worker`에 `environment:` 블록 추가 (컨테이너 내부에서 `db`·`redis` 서비스명 사용).
 - 마이그레이션 0010까지 적용. 테스트 잡 “quantum computing” 100건 → paper graph 176 nodes / 181 edges, author 1085 / 14803, keyword 375 / 1761로 정상 동작 확인.
 
+### [2026-05-13] NTIS 오버레이 최적화 + IP 에러 처리 + 배포 구조 논의
+
+#### ✅ NTIS 병렬 fetch 최적화
+- `collectors/ntis.py` — `ThreadPoolExecutor(max_workers=4)` 병렬 페이지 fetch 도입.
+  페이지 1을 동기 fetch해 `TOTALHITS` 파악 후, 나머지 페이지를 4-way 병렬 수집.
+  500개 과제 기준 약 4× 속도 향상. `httpx.Limits` 커넥션 풀 설정.
+
+#### ✅ NTIS API 에러 감지 및 전파
+- NTIS는 HTTP 200에 `<error>접근 허용 IP가 아닙니다.</error>` 바디를 반환하는 독특한 패턴.
+  `NtisApiError` 예외 클래스 신규 추가, `_fetch_xml`에서 root tag == "error" 검사.
+  `tenacity` 데코레이터에 `retry_if_not_exception_type(NtisApiError)` 추가 — 영구 에러는 재시도 안 함.
+
+#### ✅ NTIS 에러 → 프론트엔드 표시
+- `ntis_overlay.py` — `try/except NtisApiError` 블록으로 에러 메시지 포착, `job.params["ntis_last_run"]["error"]`에 저장.
+- `ntis.py` 엔드포인트 — `NtisOverviewResponse.last_run_error` 필드 추가, params에서 조회해 반환.
+- `api.ts` — `NtisOverview.last_run_error?: string | null` 타입 추가.
+- `NtisPanel.tsx` — `apiError` 표시 블록 + "IP 등록 안내" 조건부 설명 문구.
+
+#### ✅ NTIS 한국어 키워드 우선 사용
+- `ntis_overlay.py` — `keyword = (job.params or {}).get("original_keyword") or job.keyword`.
+  한→영 번역된 잡에서도 NTIS 수집 시 원본 한국어 키워드 사용.
+
+#### ✅ NTIS comparative analysis 최적화
+- `comparative.py` — `select(Author).where(Author.id.in_(job_author_ids))`로 잡 내 저자만 로드 (전체 로드 제거).
+- affiliation 토큰화 사전 계산, bulk insert (`db.execute(insert(ComparativeResult), rows)`).
+
+#### 📌 배포 구조 논의 (결론: 나중에)
+- NTIS API는 등록 IP에서만 호출 가능 → 프로덕션 배포 시 Railway/Render 서버 IP를 NTIS에 등록 필요.
+- Vercel은 K2KM 백엔드 불가 (Celery + PostgreSQL 필요). Railway/Render 권장.
+- 사용자 요청: "나중에 서비스 배포할 때 알려줘" — 배포 시점에 안내 예정.
+
 ---
 
 ## 다음 단계 (Phase 5+)
 
 - [ ] **Phase 5**: Claude orchestration + 블로그 초안 생성
-- [ ] **Phase 6**: NTIS overlay (ntis_projects, ntis_institutions, comparative_results)
+- [x] **Phase 6**: NTIS overlay (ntis_projects, ntis_institutions, comparative_results) ✅ 구현 완료
+- [ ] NTIS 프로덕션 배포 가이드 (Railway/Render IP → ntis.go.kr 재신청)
 - [ ] SCI/SSCI registry 후처리기 (`papers.sci_classification` 채우기)
 - [ ] Large Mode 최적화 (igraph/Leiden swap-in)
 - [ ] Embedding similarity 엣지 추가
