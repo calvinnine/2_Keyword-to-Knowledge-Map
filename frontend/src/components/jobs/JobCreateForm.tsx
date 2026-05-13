@@ -126,6 +126,11 @@ export function JobCreateForm() {
                 placeholder="foundation model"
                 autoFocus
               />
+              <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">
+                한국어로 입력하면 학술 DB 검색에 적합한 영문 키워드로 자동 번역됩니다
+                (예: “양자컴퓨팅” → “Quantum Computing”). OpenAlex·Semantic Scholar는
+                대부분 영문 메타데이터로 색인되어 있어 영문 변환이 검색 정확도를 크게 높입니다.
+              </p>
             </div>
           ) : (
             <div>
@@ -142,6 +147,10 @@ export function JobCreateForm() {
                 placeholder="최근 5년 동안 digital twin 분야에서 어떤 논문이 중요해?"
                 autoFocus
               />
+              <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">
+                질문에서 핵심 키워드를 자동 추출하며, 추출된 키워드가 한국어면 영문으로
+                자동 번역해 검색합니다 (학술 DB는 대부분 영문 색인).
+              </p>
               {parsed ? (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-xs">
                   <span className="text-[var(--color-fg-muted)]">추출 결과:</span>
@@ -176,6 +185,13 @@ export function JobCreateForm() {
                 value={maxPapers}
                 onChange={(e) => setMaxPapers(Number(e.target.value) || 0)}
               />
+              <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">
+                입력한 수치는 OpenAlex(최대 50,000건)의 목표값으로 사용됩니다.
+                Semantic Scholar는 API 자체 한계로 키워드당 최대 1,000건까지만 보조 수집되며,
+                두 소스를 합쳐 DOI·제목 기준 중복 제거 후 분석에 투입됩니다.
+                따라서 1,000을 초과하는 값을 넣어도 안전하지만, 매우 일반적인 키워드는
+                중복 비율이 높아 실제 정규화 논문 수가 목표치보다 적을 수 있습니다.
+              </p>
             </div>
             <div>
               <Label htmlFor="year_start" hint="선택">
@@ -257,6 +273,7 @@ export function JobCreateForm() {
             {selectedIndexes.length > 0 && (
               <p className="mt-1.5 text-xs text-[var(--color-fg-muted)]">
                 선택된 인덱스에 등재된 저널 논문만 분석에 포함됩니다.
+                ISSN 매칭이 0건이면 전체 논문으로 자동 폴백됩니다(국문 저널·프리프린트가 다수일 때).
               </p>
             )}
           </div>

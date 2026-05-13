@@ -60,7 +60,7 @@ def assign_layout(
         p = pos.get(str(eid))
         if p is None:
             continue
-        node.x_pos = 2.0 * (p[0] - xmin) / xrange - 1.0
-        node.y_pos = 2.0 * (p[1] - ymin) / yrange - 1.0
+        node.x_pos = float(2.0 * (p[0] - xmin) / xrange - 1.0)
+        node.y_pos = float(2.0 * (p[1] - ymin) / yrange - 1.0)
 
     logger.info("Layout assigned for %d nodes (%d iters)", n, iters)

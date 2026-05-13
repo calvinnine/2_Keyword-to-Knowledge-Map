@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.job import AnalysisJob, JobStatus
 from app.nlp.query_parser import HeuristicQueryParser
+from app.nlp.translate import contains_hangul, translate_keyword_to_english
 from app.schemas.job import (
     JobCreate,
     JobFromQuery,
@@ -36,13 +37,23 @@ def _enqueue_pipeline_for_job(db: Session, job: AnalysisJob) -> None:
 @router.post("", response_model=JobRead, status_code=status.HTTP_201_CREATED)
 def create_job(payload: JobCreate, db: Session = Depends(get_db)) -> AnalysisJob:
     """Create an analysis job and enqueue the pipeline asynchronously."""
+    # Auto-translate Korean keywords → English so OpenAlex / S2 can find papers.
+    keyword = payload.keyword
+    params: dict | None = None
+    if contains_hangul(keyword):
+        translated = translate_keyword_to_english(keyword)
+        if translated and translated != keyword:
+            params = {"original_keyword": keyword, "translated_from": "ko"}
+            keyword = translated
+
     job = AnalysisJob(
-        keyword=payload.keyword,
+        keyword=keyword,
         max_papers=payload.max_papers,
         year_start=payload.year_start,
         year_end=payload.year_end,
         publication_types=payload.publication_types,
         publication_scope=payload.publication_scope,
+        params=params,
         status=JobStatus.PENDING,
     )
     db.add(job)
@@ -67,8 +78,13 @@ def parse_query(payload: JobFromQuery) -> ParsedQueryRead:
             status_code=422,
             detail="Could not extract a keyword from the query",
         )
+    keyword = parsed.keyword
+    if contains_hangul(keyword):
+        translated = translate_keyword_to_english(keyword)
+        if translated and translated != keyword:
+            keyword = translated
     return ParsedQueryRead(
-        keyword=parsed.keyword,
+        keyword=keyword,
         intent=parsed.intent,
         year_start=parsed.year_start,
         year_end=parsed.year_end,
@@ -99,14 +115,27 @@ def create_job_from_query(
             detail="Could not extract a keyword from the query",
         )
 
+    # Auto-translate Korean keywords → English for OpenAlex / S2.
+    keyword = parsed.keyword
+    extra_params = parsed.to_params()
+    if contains_hangul(keyword):
+        translated = translate_keyword_to_english(keyword)
+        if translated and translated != keyword:
+            extra_params = {
+                **extra_params,
+                "original_keyword": keyword,
+                "translated_from": "ko",
+            }
+            keyword = translated
+
     job = AnalysisJob(
-        keyword=parsed.keyword,
+        keyword=keyword,
         max_papers=payload.max_papers or 20_000,
         year_start=payload.year_start if payload.year_start is not None else parsed.year_start,
         year_end=payload.year_end if payload.year_end is not None else parsed.year_end,
         publication_types=payload.publication_types,
         publication_scope=payload.publication_scope,
-        params=parsed.to_params(),
+        params=extra_params,
         status=JobStatus.PENDING,
     )
     db.add(job)

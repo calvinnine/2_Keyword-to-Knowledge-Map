@@ -31,7 +31,7 @@ def build_keyword_graph(
         select(PaperKeyword.paper_id, PaperKeyword.keyword_id)
         .where(
             PaperKeyword.paper_id.in_(
-                _paper_id_subquery(job_id, publication_scope)
+                _paper_id_subquery(db, job_id, publication_scope)
             )
         )
     ).all()

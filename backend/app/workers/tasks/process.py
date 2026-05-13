@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models.job import AnalysisJob, JobStatus
 from app.models.raw import RawPayload
+from app.models.paper import Paper
 from app.processing.ingestion import IngestionService
 from app.processing.sci_classifier import classify_papers
 from app.workers.celery_app import celery_app
@@ -67,9 +68,12 @@ def process_papers(self, job_id: str) -> dict:
         citation_count = 0
         for raw in oa_raws:
             ps = db.execute(
-                select(PaperSource).where(
+                select(PaperSource)
+                .join(Paper, Paper.id == PaperSource.paper_id)
+                .where(
                     PaperSource.source == "openalex",
                     PaperSource.source_id == raw.source_id,
+                    Paper.job_id == job_uuid,
                 )
             ).scalar_one_or_none()
             if ps:
@@ -85,6 +89,8 @@ def process_papers(self, job_id: str) -> dict:
 
         # Aggregate author paper_count / citation_count
         service.update_author_stats()
+        # Aggregate keyword paper_count
+        service.update_keyword_stats()
         db.commit()
 
         job.papers_processed = processed

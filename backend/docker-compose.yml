@@ -37,6 +37,12 @@ services:
     volumes:
       - .:/app
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://k2km:k2km@db:5432/k2km
+      DATABASE_URL_ASYNC: postgresql+asyncpg://k2km:k2km@db:5432/k2km
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
     depends_on:
       db:
         condition: service_healthy
@@ -51,6 +57,12 @@ services:
     volumes:
       - .:/app
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://k2km:k2km@db:5432/k2km
+      DATABASE_URL_ASYNC: postgresql+asyncpg://k2km:k2km@db:5432/k2km
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
     depends_on:
       db:
         condition: service_healthy

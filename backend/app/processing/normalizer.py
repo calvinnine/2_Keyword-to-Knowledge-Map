@@ -42,7 +42,20 @@ def normalize_author_name(raw: str | None) -> str | None:
     name = unicodedata.normalize("NFKC", raw).strip()
     # Collapse internal whitespace
     name = re.sub(r"\s+", " ", name)
-    return name or None
+    if not name:
+        return None
+    # Reject institution-style names:
+    # 1) Contains "/" (e.g. "경남대학교/컴퓨터공학부")
+    if "/" in name:
+        return None
+    # 2) Too many words — real person names rarely exceed 6 tokens
+    if len(name.split()) > 6:
+        return None
+    # 3) Ends with common institution suffixes (Korean universities/departments)
+    _INSTITUTION_SUFFIXES = ("대학교", "대학원", "연구원", "연구소", "학부", "학과", "센터", "院", "所")
+    if name.endswith(_INSTITUTION_SUFFIXES):
+        return None
+    return name
 
 
 def decode_inverted_abstract(inverted: dict | None) -> str | None:

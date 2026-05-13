@@ -279,13 +279,42 @@ class IngestionService:
                 updated += 1
         return updated
 
+    def update_keyword_stats(self) -> int:
+        """Aggregate paper_count per keyword from PaperKeyword.
+
+        Uses a single query to avoid N+1. Call once after all ingestion is done.
+        Returns number of keywords updated.
+        """
+        from sqlalchemy import func as sql_func
+
+        rows = self._db.execute(
+            select(
+                PaperKeyword.keyword_id,
+                sql_func.count(PaperKeyword.paper_id).label("paper_count"),
+            )
+            .group_by(PaperKeyword.keyword_id)
+        ).all()
+
+        updated = 0
+        for row in rows:
+            kw = self._db.get(Keyword, row.keyword_id)
+            if kw:
+                kw.paper_count = row.paper_count
+                updated += 1
+        return updated
+
     def resolve_openalex_citations(self, payload: dict, citing_paper_id: uuid.UUID) -> int:
         """Insert Citation rows for known referenced_works. Returns count inserted."""
         inserted = 0
         for ref_oa_id in (payload.get("referenced_works") or []):
-            stmt = select(PaperSource).where(
-                PaperSource.source == "openalex",
-                PaperSource.source_id == ref_oa_id,
+            stmt = (
+                select(PaperSource)
+                .join(Paper, Paper.id == PaperSource.paper_id)
+                .where(
+                    PaperSource.source == "openalex",
+                    PaperSource.source_id == ref_oa_id,
+                    Paper.job_id == self._job_id,
+                )
             )
             ps = self._db.execute(stmt).scalar_one_or_none()
             if ps:

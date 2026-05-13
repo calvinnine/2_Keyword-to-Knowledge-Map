@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://api.semanticscholar.org/graph/v1"
 _PAGE_SIZE = 100  # S2 maximum per bulk request
+_S2_MAX_RESULTS = 1000  # S2 paper/search hard cap: offset + limit <= 1000
 _PAPER_FIELDS = (
     "paperId,externalIds,title,abstract,year,publicationDate,"
     "venue,publicationVenue,publicationTypes,"
@@ -63,14 +64,29 @@ class SemanticScholarCollector(BaseCollector):
             year_filter = f"-{year_end}"
 
         while yielded < max_results:
-            batch_limit = min(_PAGE_SIZE, max_results - yielded)
-            data = self._fetch_page(
-                query=keyword,
-                fields=_PAPER_FIELDS,
-                limit=batch_limit,
-                offset=offset,
-                year=year_filter,
-            )
+            # S2 paper/search hard cap: offset + limit must be <= 1000.
+            if offset >= _S2_MAX_RESULTS:
+                logger.info(
+                    "S2 paper/search offset cap reached (%d); stopping at %d papers",
+                    _S2_MAX_RESULTS, yielded,
+                )
+                break
+            batch_limit = min(_PAGE_SIZE, max_results - yielded, _S2_MAX_RESULTS - offset)
+            try:
+                data = self._fetch_page(
+                    query=keyword,
+                    fields=_PAPER_FIELDS,
+                    limit=batch_limit,
+                    offset=offset,
+                    year=year_filter,
+                )
+            except httpx.HTTPStatusError as exc:
+                # 400 commonly means we hit the offset cap with a residual query;
+                # don't fail the whole job — just stop paging.
+                if exc.response.status_code == 400:
+                    logger.warning("S2 paper/search 400 at offset=%d; stopping", offset)
+                    break
+                raise
             items = data.get("data", [])
             if not items:
                 break

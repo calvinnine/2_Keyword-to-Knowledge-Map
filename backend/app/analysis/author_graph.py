@@ -21,14 +21,24 @@ logger = logging.getLogger(__name__)
 _MIN_COAUTHORSHIP_WEIGHT = 1
 
 
-def _paper_id_subquery(job_id: uuid.UUID, publication_scope: str):
-    """Subquery returning paper IDs for a job, filtered by scope."""
+def _paper_id_subquery(db, job_id: uuid.UUID, publication_scope: str):
+    """Return a list of paper IDs for a job, filtered by scope.
+
+    Falls back to all papers when the scope filter yields 0 results
+    (e.g. sci_classification not yet populated).
+    """
     from app.analysis.paper_graph import _scope_filter
-    stmt = select(Paper.id).where(Paper.job_id == job_id)
+    base_stmt = select(Paper.id).where(Paper.job_id == job_id)
     clause = _scope_filter(publication_scope)
     if clause is not None:
-        stmt = stmt.where(clause)
-    return stmt
+        scoped = db.execute(base_stmt.where(clause)).scalars().all()
+        if scoped:
+            return scoped
+        logger.info(
+            "Scope filter '%s' matched 0 papers for job %s; falling back to all papers",
+            publication_scope, job_id,
+        )
+    return db.execute(base_stmt).scalars().all()
 
 
 def build_author_graph(
@@ -41,7 +51,7 @@ def build_author_graph(
         select(PaperAuthor.paper_id, PaperAuthor.author_id)
         .where(
             PaperAuthor.paper_id.in_(
-                _paper_id_subquery(job_id, publication_scope)
+                _paper_id_subquery(db, job_id, publication_scope)
             )
         )
     ).all()

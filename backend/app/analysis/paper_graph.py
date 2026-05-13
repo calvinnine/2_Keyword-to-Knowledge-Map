@@ -68,12 +68,21 @@ def build_paper_graph(
 ) -> GraphResult:
     """Build the paper citation graph for a job and persist it."""
 
-    # Load papers for this job, filtered by publication_scope
+    # Load papers for this job, filtered by publication_scope.
+    # Fallback to all papers when the scope filter yields 0 results
+    # (e.g. sci_classification not yet populated for these papers).
     stmt = select(Paper).where(Paper.job_id == job_id)
     scope_clause = _scope_filter(publication_scope)
     if scope_clause is not None:
-        stmt = stmt.where(scope_clause)
-    papers = db.execute(stmt).scalars().all()
+        scoped = db.execute(stmt.where(scope_clause)).scalars().all()
+        papers = scoped if scoped else db.execute(stmt).scalars().all()
+        if not scoped:
+            logger.info(
+                "Scope filter '%s' matched 0 papers for job %s; falling back to all papers",
+                publication_scope, job_id,
+            )
+    else:
+        papers = db.execute(stmt).scalars().all()
     paper_ids = {p.id for p in papers}
     paper_id_to_node: dict[uuid.UUID, uuid.UUID] = {}
 

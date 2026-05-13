@@ -80,6 +80,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
   const j = job.data;
   const intent = j.params?.intent as Intent | undefined;
   const originalQuery = j.params?.original_query as string | undefined;
+  const originalKeyword = j.params?.original_keyword as string | undefined;
   const isAnalyzed = j.status === "completed";
   const scopeLabel = (() => {
     const raw = j.publication_scope ?? "all";
@@ -108,6 +109,11 @@ export function JobDetail({ jobId }: { jobId: string }) {
             {originalQuery ? (
               <p className="mt-1 text-xs italic text-[var(--color-fg-muted)]">
                 질의: “{originalQuery}”
+              </p>
+            ) : null}
+            {originalKeyword && !originalQuery ? (
+              <p className="mt-1 text-xs italic text-[var(--color-fg-muted)]">
+                입력: “{originalKeyword}” → 영문 번역 적용
               </p>
             ) : null}
           </div>
