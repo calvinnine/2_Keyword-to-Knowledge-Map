@@ -181,8 +181,12 @@ Phase 6: NTIS overlay 구현 완료 (API 키 신청 후 활성화).
 
 ## 다음 단계
 
-- [ ] 분석 단계 author 집계 컬럼(`paper_count`, `citation_count`) 채우기
-- [ ] Celery worker analyze 단계 hang 원인 분석
-- [ ] 추가 테스트 돌리면서 개선사항 발굴
+- [ ] **[버그]** 분석 단계 author 집계 컬럼(`paper_count`, `citation_count`) 채우기
+- [ ] **[버그]** Celery worker analyze 단계 hang 원인 분석
+- [ ] **[기능]** 논문 탐색 범위 옵션화 (체크박스: 전체 / SCI·SSCI / SCIE)
+  - **A안 확정**: 전부 수집 후 분석 단계에서 필터링 (재수집 없이 기준 변경 가능)
+  - 학회 프로시딩 포함 여부는 추후 결정
+  - 기존 `sci_classifier.py` 분류 결과 활용
+- [ ] **[추후]** Researcher Score 지표 반영 (로직 개발 완료 후 요청)
 - [ ] 프론트엔드: NTIS 비교 결과 시각화 패널
 - [ ] 프론트엔드: 고급 필터링, 결과 내보내기
