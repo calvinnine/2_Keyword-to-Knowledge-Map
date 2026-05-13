@@ -32,12 +32,20 @@ _EMBEDDING_MAX_NEIGHBORS = 5         # max embedding edges per paper
 
 
 def _scope_filter(scope: str):
-    """Return SQLAlchemy filter clause for sci_classification based on scope."""
-    from sqlalchemy import or_
-    if scope == "sci_ssci":
-        return Paper.sci_classification.in_(["SCIE", "SSCI"])
-    if scope == "scie":
-        return Paper.sci_classification == "SCIE"
+    """Return SQLAlchemy filter clause for sci_classification based on scope.
+
+    Scope values:
+      all   — no filter
+      wos   — any WoS index (SCIE | SSCI | AHCI | ESCI)
+      scie  — SCIE only
+      ssci  — SSCI only
+      ahci  — AHCI only
+      esci  — ESCI only
+    """
+    if scope == "wos":
+        return Paper.sci_classification.in_(["SCIE", "SSCI", "AHCI", "ESCI"])
+    if scope in ("scie", "ssci", "ahci", "esci"):
+        return Paper.sci_classification == scope.upper()
     return None  # "all" — no filter
 
 

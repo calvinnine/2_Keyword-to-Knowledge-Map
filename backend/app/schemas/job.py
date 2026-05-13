@@ -13,7 +13,7 @@ class JobCreate(BaseModel):
     year_start: int | None = Field(default=None, ge=1900, le=2100)
     year_end: int | None = Field(default=None, ge=1900, le=2100)
     publication_types: list[str] | None = None
-    publication_scope: str = Field(default="all", pattern="^(all|sci_ssci|scie)$")
+    publication_scope: str = Field(default="all", pattern="^(all|wos|scie|ssci|ahci|esci)$")
 
     @model_validator(mode="after")
     def validate_year_range(self) -> "JobCreate":
@@ -35,7 +35,7 @@ class JobFromQuery(BaseModel):
     year_start: int | None = Field(default=None, ge=1900, le=2100)
     year_end: int | None = Field(default=None, ge=1900, le=2100)
     publication_types: list[str] | None = None
-    publication_scope: str = Field(default="all", pattern="^(all|sci_ssci|scie)$")
+    publication_scope: str = Field(default="all", pattern="^(all|wos|scie|ssci|ahci|esci)$")
 
 
 class ParsedQueryRead(BaseModel):

@@ -74,6 +74,7 @@ class IngestionService:
             publication_date=payload.get("publication_date"),
             venue_name=_oa_venue_name(payload),
             venue_type=pub_type,
+            venue_issn=_oa_venue_issn(payload),
             citation_count=payload.get("cited_by_count") or 0,
             reference_count=payload.get("referenced_works_count") or 0,
             openalex_id=payload.get("id"),
@@ -376,6 +377,13 @@ def _oa_venue_name(payload: dict) -> str | None:
     loc = payload.get("primary_location") or {}
     source = loc.get("source") or {}
     return source.get("display_name")
+
+
+def _oa_venue_issn(payload: dict) -> str | None:
+    """Extract linking ISSN (issn_l) from OpenAlex primary_location.source."""
+    loc = payload.get("primary_location") or {}
+    source = loc.get("source") or {}
+    return source.get("issn_l") or None
 
 
 def _s2_venue_name(payload: dict) -> str | None:
