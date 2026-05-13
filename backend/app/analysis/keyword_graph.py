@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.models.paper import Paper, PaperKeyword
 from app.models.keyword import Keyword
 from app.models.graph import GraphResult, GraphNode, GraphEdge, GraphType
+from app.analysis.layout import assign_layout
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ def build_keyword_graph(
     db.flush()
 
     keyword_to_node: dict[uuid.UUID, uuid.UUID] = {}
+    keyword_to_node_obj: dict[uuid.UUID, GraphNode] = {}
     for kw in keywords:
         node = GraphNode(
             id=uuid.uuid4(),
@@ -67,6 +69,7 @@ def build_keyword_graph(
         )
         db.add(node)
         keyword_to_node[kw.id] = node.id
+        keyword_to_node_obj[kw.id] = node
 
     db.flush()
 
@@ -94,6 +97,10 @@ def build_keyword_graph(
                 edge_type="co_occurrence",
             ))
             edge_count += 1
+
+    # Pre-compute layout using co-occurrence edges
+    cooc_edges = [(a, b) for (a, b) in cooc_weights if cooc_weights[(a, b)] >= _MIN_COOCCURRENCE_WEIGHT]
+    assign_layout(keyword_to_node_obj, cooc_edges)
 
     graph_result.node_count = len(keywords)
     graph_result.edge_count = edge_count

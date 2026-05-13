@@ -73,7 +73,7 @@ export interface JobCreatePayload {
   year_start?: number | null;
   year_end?: number | null;
   publication_types?: string[] | null;
-  publication_scope?: PublicationScope;
+  publication_scope?: string;
 }
 
 export interface JobFromQueryPayload {
@@ -82,7 +82,7 @@ export interface JobFromQueryPayload {
   year_start?: number | null;
   year_end?: number | null;
   publication_types?: string[] | null;
-  publication_scope?: PublicationScope;
+  publication_scope?: string;
 }
 
 export interface ParsedQuery {
@@ -143,6 +143,33 @@ export interface KeywordRead {
   created_at: string;
 }
 
+export const ROLE_LABELS = [
+  "Core Influencer",
+  "Bridge Researcher",
+  "Productive Contributor",
+  "Emerging Researcher",
+  "Niche Specialist",
+  "Domestic R&D Actor",
+] as const;
+
+export type RoleLabel = (typeof ROLE_LABELS)[number];
+
+export interface AuthorRecommendation {
+  author_id: string;
+  name: string;
+  primary_country_code: string | null;
+  primary_country_name: string | null;
+  openalex_id: string | null;
+  related_paper_count: number;
+  global_scholarly_impact: number | null;
+  author_impact_score: number | null;
+  structural_score: number | null;
+  momentum_score: number | null;
+  low_impact_ratio: number | null;
+  role_labels: string[];
+  caution_flags: string[];
+}
+
 export interface GraphResultRead {
   id: string;
   job_id: string;
@@ -161,6 +188,8 @@ export interface GraphNodeRead {
   keyword_id: string | null;
   cluster_id: number | null;
   properties: Record<string, unknown> | null;
+  x_pos: number | null;
+  y_pos: number | null;
 }
 
 export interface GraphEdgeRead {

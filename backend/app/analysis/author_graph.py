@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.models.paper import Paper, PaperAuthor
 from app.models.author import Author
 from app.models.graph import GraphResult, GraphNode, GraphEdge, GraphType
+from app.analysis.layout import assign_layout
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,7 @@ def build_author_graph(
 
     # Create nodes
     author_to_node: dict[uuid.UUID, uuid.UUID] = {}
+    author_to_node_obj: dict[uuid.UUID, GraphNode] = {}
     for author in authors:
         node = GraphNode(
             id=uuid.uuid4(),
@@ -82,6 +84,7 @@ def build_author_graph(
         )
         db.add(node)
         author_to_node[author.id] = node.id
+        author_to_node_obj[author.id] = node
 
     db.flush()
 
@@ -109,6 +112,10 @@ def build_author_graph(
                 edge_type="co_authorship",
             ))
             edge_count += 1
+
+    # Pre-compute layout using co-authorship edges
+    coauthor_edges = [(a, b) for (a, b) in coauthor_weights if coauthor_weights[(a, b)] >= _MIN_COAUTHORSHIP_WEIGHT]
+    assign_layout(author_to_node_obj, coauthor_edges)
 
     graph_result.node_count = len(authors)
     graph_result.edge_count = edge_count

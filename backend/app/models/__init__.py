@@ -6,6 +6,7 @@ from app.models.keyword import Keyword
 from app.models.paper import Paper, PaperSource, PaperAuthor, PaperKeyword, Citation
 from app.models.graph import GraphResult, GraphNode, GraphEdge, ClusterResult, CentralityResult
 from app.models.wos_journal import WosJournal
+from app.models.metrics import PaperMetrics, AuthorMetrics
 
 __all__ = [
     "AnalysisJob",
@@ -26,4 +27,6 @@ __all__ = [
     "ClusterResult",
     "CentralityResult",
     "WosJournal",
+    "PaperMetrics",
+    "AuthorMetrics",
 ]

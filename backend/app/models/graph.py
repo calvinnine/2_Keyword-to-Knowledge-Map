@@ -78,6 +78,9 @@ class GraphNode(Base):
     # Derived analytical properties (not display metadata)
     cluster_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     properties: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Pre-computed layout coordinates (spring_layout via NetworkX)
+    x_pos: Mapped[float | None] = mapped_column(Float, nullable=True)
+    y_pos: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class GraphEdge(Base):

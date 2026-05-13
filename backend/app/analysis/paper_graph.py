@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models.paper import Paper, Citation, PaperSource
 from app.models.graph import GraphResult, GraphNode, GraphEdge, GraphType
+from app.analysis.layout import assign_layout
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ def build_paper_graph(
     db.flush()
 
     # Create nodes
+    paper_id_to_node_obj: dict[uuid.UUID, GraphNode] = {}
     for paper in papers:
         node = GraphNode(
             id=uuid.uuid4(),
@@ -100,6 +102,7 @@ def build_paper_graph(
         )
         db.add(node)
         paper_id_to_node[paper.id] = node.id
+        paper_id_to_node_obj[paper.id] = node
 
     db.flush()
 
@@ -170,6 +173,12 @@ def build_paper_graph(
     # Embedding similarity edges (abstract-level semantic proximity)
     emb_count = _add_embedding_edges(db, graph_result, papers, paper_id_to_node)
     edge_count += emb_count
+
+    # Pre-compute layout using direct citation edges as the structural backbone
+    assign_layout(
+        paper_id_to_node_obj,
+        [(cit.citing_paper_id, cit.cited_paper_id) for cit in citations],
+    )
 
     graph_result.node_count = len(papers)
     graph_result.edge_count = edge_count

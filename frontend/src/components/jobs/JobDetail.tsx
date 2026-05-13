@@ -14,6 +14,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Tabs } from "@/components/ui/Tabs";
 import { Badge } from "@/components/ui/Badge";
 import { JobStatusBadge } from "./JobStatusBadge";
+import { AuthorRecommendations } from "@/components/authors/AuthorRecommendations";
 import { formatDateTime, formatNumber } from "@/lib/utils";
 import { PUBLICATION_SCOPE_OPTIONS, WOS_INDEX_OPTIONS } from "@/lib/types/api";
 import type { GraphType, Intent } from "@/lib/types/api";
@@ -174,7 +175,12 @@ export function JobDetail({ jobId }: { jobId: string }) {
       </div>
 
       {tab === "papers" && <PapersPanel jobId={jobId} disabled={!isAnalyzed} />}
-      {tab === "authors" && <AuthorsPanel jobId={jobId} disabled={!isAnalyzed} />}
+      {tab === "authors" && (
+        <div className="space-y-4">
+          <AuthorRecommendations jobId={jobId} />
+          <AuthorsPanel jobId={jobId} disabled={!isAnalyzed} />
+        </div>
+      )}
       {tab === "keywords" && (
         <KeywordsPanel jobId={jobId} disabled={!isAnalyzed} />
       )}
