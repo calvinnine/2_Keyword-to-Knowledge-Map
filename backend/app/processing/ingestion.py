@@ -252,6 +252,33 @@ class IngestionService:
             updated += 1
         return updated
 
+    def update_author_stats(self) -> int:
+        """Aggregate paper_count and citation_count per author from PaperAuthor + Paper.
+
+        Uses a single query join to avoid N+1. Call once after all ingestion is done.
+        Returns number of authors updated.
+        """
+        from sqlalchemy import func as sql_func
+
+        rows = self._db.execute(
+            select(
+                PaperAuthor.author_id,
+                sql_func.count(PaperAuthor.paper_id).label("paper_count"),
+                sql_func.coalesce(sql_func.sum(Paper.citation_count), 0).label("citation_count"),
+            )
+            .join(Paper, Paper.id == PaperAuthor.paper_id)
+            .group_by(PaperAuthor.author_id)
+        ).all()
+
+        updated = 0
+        for row in rows:
+            author = self._db.get(Author, row.author_id)
+            if author:
+                author.paper_count = row.paper_count
+                author.citation_count = row.citation_count
+                updated += 1
+        return updated
+
     def resolve_openalex_citations(self, payload: dict, citing_paper_id: uuid.UUID) -> int:
         """Insert Citation rows for known referenced_works. Returns count inserted."""
         inserted = 0
