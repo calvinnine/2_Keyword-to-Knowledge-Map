@@ -7,19 +7,10 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatNumber } from "@/lib/utils";
 import type { NtisProjectSummary } from "@/lib/types/api";
-import { ImpactMatrix } from "./ImpactMatrix";
-
-function formatBudget(won: number | null): string {
-  if (won === null) return "—";
-  if (won >= 1_000_000_000) return `${(won / 1_000_000_000).toFixed(1)}B원`;
-  if (won >= 1_000_000) return `${(won / 1_000_000).toFixed(0)}M원`;
-  return `${formatNumber(won)}원`;
-}
 
 export function NtisPanel({ jobId }: { jobId: string }) {
   const queryClient = useQueryClient();
   const [triggered, setTriggered] = useState(false);
-  const [matrixVisible, setMatrixVisible] = useState(false);
 
   const overview = useQuery({
     queryKey: ["ntis-overview", jobId],
@@ -60,14 +51,6 @@ export function NtisPanel({ jobId }: { jobId: string }) {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {hasData && (
-              <button
-                onClick={() => setMatrixVisible((v) => !v)}
-                className="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs font-medium text-[var(--color-fg)] hover:bg-[var(--color-surface-2)]"
-              >
-                {matrixVisible ? "매트릭스 닫기" : "영향력 매트릭스"}
-              </button>
-            )}
             <button
               onClick={() => trigger.mutate()}
               disabled={trigger.isPending || triggered}
@@ -95,9 +78,6 @@ export function NtisPanel({ jobId }: { jobId: string }) {
         )}
       </Card>
 
-      {/* Impact matrix */}
-      {matrixVisible && hasData && <ImpactMatrix jobId={jobId} />}
-
       {/* Project list */}
       {hasData && (
         <Card className="overflow-hidden">
@@ -108,7 +88,6 @@ export function NtisPanel({ jobId }: { jobId: string }) {
                 <th className="px-5 py-2.5 font-medium">부처</th>
                 <th className="px-5 py-2.5 font-medium">수행기관</th>
                 <th className="px-5 py-2.5 font-medium">기간</th>
-                <th className="px-5 py-2.5 font-medium text-right">예산</th>
               </tr>
             </thead>
             <tbody>
@@ -163,9 +142,6 @@ function ProjectRow({ project: p }: { project: NtisProjectSummary }) {
       </td>
       <td className="px-5 py-2.5 align-top text-[var(--color-fg-muted)]">
         {period}
-      </td>
-      <td className="px-5 py-2.5 align-top text-right font-mono text-[var(--color-fg)]">
-        {formatBudget(p.total_budget)}
       </td>
     </tr>
   );

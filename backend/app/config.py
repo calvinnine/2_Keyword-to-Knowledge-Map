@@ -30,6 +30,12 @@ class Settings(BaseSettings):
 
     ntis_api_key: str = ""
 
+    # Access control ─────────────────────────────────────────────────────────
+    # PUBLIC_ONLY=true (default): expose only Public-grade data.
+    # Sensitive endpoints (author scores, NTIS matrix, role labels) return 403.
+    # Set to false only after a proper auth layer is in place.
+    public_only: bool = True
+
     job_default_max_papers: int = 20_000
     job_absolute_max_papers: int = 50_000
 

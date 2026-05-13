@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_non_public
 from app.database import get_db
 from app.models.author import Author
 from app.models.metrics import AuthorMetrics
@@ -69,6 +70,8 @@ def list_authors_for_job(
 @router.get(
     "/jobs/{job_id}/author-recommendations",
     response_model=list[AuthorRecommendation],
+    # Access grade: Verified Professional (role labels + detailed scores)
+    dependencies=[Depends(require_non_public)],
 )
 def get_author_recommendations(
     job_id: uuid.UUID,

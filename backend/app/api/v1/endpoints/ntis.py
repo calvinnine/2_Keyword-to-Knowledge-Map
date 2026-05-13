@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_non_public
+from app.config import settings
 from app.database import get_db
 from app.models.author import Author
 from app.models.job import AnalysisJob, JobStatus
@@ -120,11 +122,18 @@ def get_ntis_overview(job_id: uuid.UUID, db: Session = Depends(get_db)):
         select(func.count()).where(ComparativeResult.job_id == job_id)
     ).scalar_one()
 
+    def _to_summary(p: NtisProject) -> NtisProjectSummary:
+        s = NtisProjectSummary.model_validate(p)
+        # total_budget: Verified Professional — redact in public mode
+        if settings.public_only:
+            s.total_budget = None
+        return s
+
     return NtisOverviewResponse(
         job_id=job_id,
         ntis_project_count=len(projects),
         comparative_match_count=match_count,
-        projects=[NtisProjectSummary.model_validate(p) for p in projects],
+        projects=[_to_summary(p) for p in projects],
     )
 
 
@@ -164,7 +173,12 @@ def list_comparative_results(
     return [ComparativeResultItem.model_validate(r) for r in rows]
 
 
-@router.get("/jobs/{job_id}/ntis/matrix", response_model=list[AuthorMatrixItem])
+@router.get(
+    "/jobs/{job_id}/ntis/matrix",
+    response_model=list[AuthorMatrixItem],
+    # Access grade: Admin/Internal (domestic_rnd_relevance + role_labels)
+    dependencies=[Depends(require_non_public)],
+)
 def get_impact_matrix(
     job_id: uuid.UUID,
     limit: int = 200,

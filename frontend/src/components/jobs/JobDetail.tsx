@@ -179,7 +179,6 @@ export function JobDetail({ jobId }: { jobId: string }) {
       {tab === "papers" && <PapersPanel jobId={jobId} disabled={!isAnalyzed} />}
       {tab === "authors" && (
         <div className="space-y-4">
-          <AuthorRecommendations jobId={jobId} />
           <AuthorsPanel jobId={jobId} disabled={!isAnalyzed} />
         </div>
       )}
