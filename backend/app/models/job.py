@@ -29,7 +29,8 @@ class AnalysisJob(Base):
     )
     keyword: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
     status: Mapped[JobStatus] = mapped_column(
-        Enum(JobStatus), default=JobStatus.PENDING, nullable=False, index=True
+        Enum(JobStatus, values_callable=lambda x: [e.value for e in x]),
+        default=JobStatus.PENDING, nullable=False, index=True
     )
 
     # Search parameters
@@ -38,6 +39,9 @@ class AnalysisJob(Base):
     year_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # publication_types: comma-separated or stored as JSON
     publication_types: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Publication scope filter applied at graph-build time (A안: collect all, filter at analysis)
+    # Comma-separated WoS index codes, e.g. "scie,ssci" | "all"
+    publication_scope: Mapped[str] = mapped_column(String(100), default="all", nullable=False)
 
     # Progress tracking
     papers_collected: Mapped[int] = mapped_column(Integer, default=0)
@@ -46,6 +50,9 @@ class AnalysisJob(Base):
 
     # Celery task IDs for cancellation
     celery_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Claude-generated insight (populated after analysis completes)
+    insight: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Extra metadata
     params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

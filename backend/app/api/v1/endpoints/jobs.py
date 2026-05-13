@@ -42,6 +42,7 @@ def create_job(payload: JobCreate, db: Session = Depends(get_db)) -> AnalysisJob
         year_start=payload.year_start,
         year_end=payload.year_end,
         publication_types=payload.publication_types,
+        publication_scope=payload.publication_scope,
         status=JobStatus.PENDING,
     )
     db.add(job)
@@ -104,6 +105,7 @@ def create_job_from_query(
         year_start=payload.year_start if payload.year_start is not None else parsed.year_start,
         year_end=payload.year_end if payload.year_end is not None else parsed.year_end,
         publication_types=payload.publication_types,
+        publication_scope=payload.publication_scope,
         params=parsed.to_params(),
         status=JobStatus.PENDING,
     )

@@ -9,9 +9,11 @@ import { Card, CardBody, CardDescription, CardHeader, CardTitle } from "@/compon
 import { Input, Label, Textarea } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
 import { Badge } from "@/components/ui/Badge";
-import type { Intent, ParsedQuery } from "@/lib/types/api";
+import { WOS_INDEX_OPTIONS } from "@/lib/types/api";
+import type { Intent, ParsedQuery, PublicationScope } from "@/lib/types/api";
 
 type Mode = "keyword" | "query";
+type WosIndex = Exclude<PublicationScope, "all" | "wos">;
 
 const intentLabel: Record<Intent, string> = {
   author_influence: "저자 영향력 분석",
@@ -19,6 +21,12 @@ const intentLabel: Record<Intent, string> = {
   keyword_clusters: "키워드 군집 / 동향",
   general: "일반",
 };
+
+/** Convert selected indexes to the API scope string. */
+function toScopeString(selected: WosIndex[]): string {
+  if (selected.length === 0) return "all";
+  return selected.join(",");
+}
 
 export function JobCreateForm() {
   const router = useRouter();
@@ -28,6 +36,8 @@ export function JobCreateForm() {
   const [maxPapers, setMaxPapers] = useState(20_000);
   const [yearStart, setYearStart] = useState<string>("");
   const [yearEnd, setYearEnd] = useState<string>("");
+  // Empty array = "전체" (all). One-or-more entries = specific WoS indexes.
+  const [selectedIndexes, setSelectedIndexes] = useState<WosIndex[]>([]);
 
   // keyword mode
   const [keyword, setKeyword] = useState("");
@@ -46,12 +56,14 @@ export function JobCreateForm() {
     mutationFn: async () => {
       const yearStartNum = yearStart ? Number(yearStart) : null;
       const yearEndNum = yearEnd ? Number(yearEnd) : null;
+      const publication_scope = toScopeString(selectedIndexes);
       if (mode === "keyword") {
         return jobsApi.create({
           keyword,
           max_papers: maxPapers,
           year_start: yearStartNum,
           year_end: yearEndNum,
+          publication_scope,
         });
       }
       return jobsApi.createFromQuery({
@@ -59,6 +71,7 @@ export function JobCreateForm() {
         max_papers: maxPapers,
         year_start: yearStartNum,
         year_end: yearEndNum,
+        publication_scope,
       });
     },
     onSuccess: (job) => router.push(`/jobs/${job.id}`),
@@ -66,6 +79,14 @@ export function JobCreateForm() {
 
   const canSubmit =
     mode === "keyword" ? keyword.trim().length > 0 : query.trim().length > 0;
+
+  function toggleIndex(value: WosIndex) {
+    setSelectedIndexes((prev) =>
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
+    );
+  }
+
+  const isAllSelected = selectedIndexes.length === 0;
 
   return (
     <Card>
@@ -184,6 +205,60 @@ export function JobCreateForm() {
                 onChange={(e) => setYearEnd(e.target.value)}
               />
             </div>
+          </div>
+
+          {/* Publication scope — checkbox multi-select */}
+          <div>
+            <Label hint="Clarivate Web of Science 기준 · 복수 선택 가능">저널 분류 필터</Label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {/* 전체 — deselects all indexes */}
+              <label
+                className={[
+                  "flex cursor-pointer items-center gap-2 rounded-[var(--radius-md)] border px-3 py-2 text-sm transition-colors select-none",
+                  isAllSelected
+                    ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
+                    : "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-fg)] hover:border-[var(--color-accent-soft)]",
+                ].join(" ")}
+              >
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  onChange={() => setSelectedIndexes([])}
+                  className="accent-[var(--color-accent)]"
+                />
+                <span className="font-medium">전체</span>
+              </label>
+
+              {/* Individual WoS index checkboxes */}
+              {WOS_INDEX_OPTIONS.map((opt) => {
+                const checked = selectedIndexes.includes(opt.value);
+                return (
+                  <label
+                    key={opt.value}
+                    className={[
+                      "flex cursor-pointer items-center gap-2 rounded-[var(--radius-md)] border px-3 py-2 text-sm transition-colors select-none",
+                      checked
+                        ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
+                        : "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-fg)] hover:border-[var(--color-accent-soft)]",
+                    ].join(" ")}
+                    title={opt.description}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleIndex(opt.value)}
+                      className="accent-[var(--color-accent)]"
+                    />
+                    <span className="font-medium">{opt.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {selectedIndexes.length > 0 && (
+              <p className="mt-1.5 text-xs text-[var(--color-fg-muted)]">
+                선택된 인덱스에 등재된 저널 논문만 분석에 포함됩니다.
+              </p>
+            )}
           </div>
 
           {createMutation.isError ? (

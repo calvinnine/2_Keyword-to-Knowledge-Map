@@ -26,6 +26,8 @@ class GraphNodeRead(BaseModel):
     keyword_id: uuid.UUID | None
     cluster_id: int | None
     properties: dict[str, Any] | None
+    x_pos: float | None
+    y_pos: float | None
 
     model_config = {"from_attributes": True}
 

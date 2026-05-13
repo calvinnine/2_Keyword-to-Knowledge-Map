@@ -11,6 +11,7 @@ celery_app = Celery(
         "app.workers.tasks.process",
         "app.workers.tasks.analyze",
         "app.workers.tasks.pipeline",
+        "app.workers.tasks.ntis_overlay",
     ],
 )
 

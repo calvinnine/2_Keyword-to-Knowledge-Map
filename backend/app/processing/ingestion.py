@@ -45,6 +45,9 @@ class IngestionService:
         self._institution_cache: dict[str, uuid.UUID] = {}  # openalex_id → id
         self._author_cache: dict[str, uuid.UUID] = {}       # openalex_id → id
         self._keyword_cache: dict[str, uuid.UUID] = {}      # normalized → id
+        # Dedup sets for composite-PK junction tables (same paper from multiple sources)
+        self._paper_author_seen: set[tuple] = set()         # (paper_id, author_id)
+        self._paper_keyword_seen: set[tuple] = set()        # (paper_id, keyword_id)
 
     # ------------------------------------------------------------------
     # OpenAlex
@@ -71,6 +74,7 @@ class IngestionService:
             publication_date=payload.get("publication_date"),
             venue_name=_oa_venue_name(payload),
             venue_type=pub_type,
+            venue_issn=_oa_venue_issn(payload),
             citation_count=payload.get("cited_by_count") or 0,
             reference_count=payload.get("referenced_works_count") or 0,
             openalex_id=payload.get("id"),
@@ -85,6 +89,7 @@ class IngestionService:
         paper.arxiv_id = ids.get("arxiv")
 
         self._db.add(paper)
+        self._db.flush()  # ensure paper row exists before FK references (author_affiliations, paper_sources)
 
         # Source record
         self._db.add(PaperSource(
@@ -100,11 +105,13 @@ class IngestionService:
             if author_id:
                 pos = authorship.get("author_position")
                 position_int = {"first": 0, "middle": 1, "last": 2}.get(pos) if pos else None
-                self._db.merge(PaperAuthor(
-                    paper_id=paper.id,
-                    author_id=author_id,
-                    author_position=position_int,
-                ))
+                if (paper.id, author_id) not in self._paper_author_seen:
+                    self._paper_author_seen.add((paper.id, author_id))
+                    self._db.merge(PaperAuthor(
+                        paper_id=paper.id,
+                        author_id=author_id,
+                        author_position=position_int,
+                    ))
                 # Affiliations
                 for aff in extract_openalex_affiliation(authorship):
                     inst_id = self._get_or_create_institution(aff) if aff.get("institution_openalex_id") else None
@@ -117,13 +124,13 @@ class IngestionService:
                         country_name=aff.get("country_name"),
                     ))
 
-        # Keywords
+        # Keywords — deduplicate across all sources (OpenAlex + S2 may share same paper)
         keyword_sources = (payload.get("keywords") or []) + (payload.get("concepts") or [])
         for kw_entry in keyword_sources:
             kw_text = kw_entry.get("display_name") if isinstance(kw_entry, dict) else kw_entry
             kw_id = self._get_or_create_keyword(kw_text)
-            if kw_id:
-                # merge avoids duplicate PK errors
+            if kw_id and (paper.id, kw_id) not in self._paper_keyword_seen:
+                self._paper_keyword_seen.add((paper.id, kw_id))
                 self._db.merge(PaperKeyword(paper_id=paper.id, keyword_id=kw_id, source="openalex"))
 
         # Citation stubs (only IDs; full records may not be in our corpus yet)
@@ -171,6 +178,7 @@ class IngestionService:
             job_id=self._job_id,
         )
         self._db.add(paper)
+        self._db.flush()  # ensure paper row exists before FK references
 
         self._db.add(PaperSource(
             paper_id=paper.id,
@@ -182,10 +190,12 @@ class IngestionService:
         for author_entry in (payload.get("authors") or []):
             author_id = self._get_or_create_author_from_s2(author_entry)
             if author_id:
-                self._db.merge(PaperAuthor(
-                    paper_id=paper.id,
-                    author_id=author_id,
-                ))
+                if (paper.id, author_id) not in self._paper_author_seen:
+                    self._paper_author_seen.add((paper.id, author_id))
+                    self._db.merge(PaperAuthor(
+                        paper_id=paper.id,
+                        author_id=author_id,
+                    ))
                 aff = extract_s2_affiliation(author_entry)
                 if aff.get("raw_affiliation"):
                     self._db.add(AuthorAffiliation(
@@ -198,7 +208,8 @@ class IngestionService:
 
         for fos in (payload.get("fieldsOfStudy") or []):
             kw_id = self._get_or_create_keyword(fos)
-            if kw_id:
+            if kw_id and (paper.id, kw_id) not in self._paper_keyword_seen:
+                self._paper_keyword_seen.add((paper.id, kw_id))
                 self._db.merge(PaperKeyword(paper_id=paper.id, keyword_id=kw_id, source="semantic_scholar"))
 
         return paper
@@ -335,6 +346,7 @@ class IngestionService:
             country_name=aff.get("country_name"),
         )
         self._db.add(inst)
+        self._db.flush()  # ensure row exists before FK reference in author_affiliations
         self._institution_cache[oa_id] = inst.id
         return inst.id
 
@@ -365,6 +377,13 @@ def _oa_venue_name(payload: dict) -> str | None:
     loc = payload.get("primary_location") or {}
     source = loc.get("source") or {}
     return source.get("display_name")
+
+
+def _oa_venue_issn(payload: dict) -> str | None:
+    """Extract linking ISSN (issn_l) from OpenAlex primary_location.source."""
+    loc = payload.get("primary_location") or {}
+    source = loc.get("source") or {}
+    return source.get("issn_l") or None
 
 
 def _s2_venue_name(payload: dict) -> str | None:

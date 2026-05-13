@@ -14,13 +14,26 @@ from sqlalchemy.orm import Session
 from app.models.paper import Paper, PaperAuthor
 from app.models.author import Author
 from app.models.graph import GraphResult, GraphNode, GraphEdge, GraphType
+from app.analysis.layout import assign_layout
 
 logger = logging.getLogger(__name__)
 
 _MIN_COAUTHORSHIP_WEIGHT = 1
 
 
-def build_author_graph(db: Session, job_id: uuid.UUID) -> GraphResult:
+def _paper_id_subquery(job_id: uuid.UUID, publication_scope: str):
+    """Subquery returning paper IDs for a job, filtered by scope."""
+    from app.analysis.paper_graph import _scope_filter
+    stmt = select(Paper.id).where(Paper.job_id == job_id)
+    clause = _scope_filter(publication_scope)
+    if clause is not None:
+        stmt = stmt.where(clause)
+    return stmt
+
+
+def build_author_graph(
+    db: Session, job_id: uuid.UUID, publication_scope: str = "all"
+) -> GraphResult:
     """Build co-authorship graph for all authors in job corpus."""
 
     # Fetch all (paper_id, author_id) pairs for papers in this job
@@ -28,7 +41,7 @@ def build_author_graph(db: Session, job_id: uuid.UUID) -> GraphResult:
         select(PaperAuthor.paper_id, PaperAuthor.author_id)
         .where(
             PaperAuthor.paper_id.in_(
-                select(Paper.id).where(Paper.job_id == job_id)
+                _paper_id_subquery(job_id, publication_scope)
             )
         )
     ).all()
@@ -57,6 +70,7 @@ def build_author_graph(db: Session, job_id: uuid.UUID) -> GraphResult:
 
     # Create nodes
     author_to_node: dict[uuid.UUID, uuid.UUID] = {}
+    author_to_node_obj: dict[uuid.UUID, GraphNode] = {}
     for author in authors:
         node = GraphNode(
             id=uuid.uuid4(),
@@ -70,6 +84,7 @@ def build_author_graph(db: Session, job_id: uuid.UUID) -> GraphResult:
         )
         db.add(node)
         author_to_node[author.id] = node.id
+        author_to_node_obj[author.id] = node
 
     db.flush()
 
@@ -97,6 +112,10 @@ def build_author_graph(db: Session, job_id: uuid.UUID) -> GraphResult:
                 edge_type="co_authorship",
             ))
             edge_count += 1
+
+    # Pre-compute layout using co-authorship edges
+    coauthor_edges = [(a, b) for (a, b) in coauthor_weights if coauthor_weights[(a, b)] >= _MIN_COAUTHORSHIP_WEIGHT]
+    assign_layout(author_to_node_obj, coauthor_edges)
 
     graph_result.node_count = len(authors)
     graph_result.edge_count = edge_count

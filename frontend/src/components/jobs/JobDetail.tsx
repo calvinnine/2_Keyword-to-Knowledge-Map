@@ -14,7 +14,9 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Tabs } from "@/components/ui/Tabs";
 import { Badge } from "@/components/ui/Badge";
 import { JobStatusBadge } from "./JobStatusBadge";
+import { AuthorRecommendations } from "@/components/authors/AuthorRecommendations";
 import { formatDateTime, formatNumber } from "@/lib/utils";
+import { PUBLICATION_SCOPE_OPTIONS, WOS_INDEX_OPTIONS } from "@/lib/types/api";
 import type { GraphType, Intent } from "@/lib/types/api";
 
 type TabKey = "papers" | "authors" | "keywords" | "graphs";
@@ -78,6 +80,17 @@ export function JobDetail({ jobId }: { jobId: string }) {
   const intent = j.params?.intent as Intent | undefined;
   const originalQuery = j.params?.original_query as string | undefined;
   const isAnalyzed = j.status === "completed";
+  const scopeLabel = (() => {
+    const raw = j.publication_scope ?? "all";
+    if (raw === "all") return "전체";
+    if (raw === "wos") return "WoS 전체";
+    // comma-separated multi-select, e.g. "scie,ssci"
+    const allOptions = [...PUBLICATION_SCOPE_OPTIONS, ...WOS_INDEX_OPTIONS];
+    return raw
+      .split(",")
+      .map((s) => allOptions.find((o) => o.value === s.trim())?.label ?? s.toUpperCase())
+      .join(" + ");
+  })();
 
   return (
     <div className="space-y-6">
@@ -104,7 +117,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
             ) : null}
           </div>
         </CardHeader>
-        <CardBody className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-4">
+        <CardBody className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-5">
           <Stat label="최대 논문" value={formatNumber(j.max_papers)} />
           <Stat
             label="연도"
@@ -114,6 +127,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
                 : "전체 기간"
             }
           />
+          <Stat label="논문 범위" value={scopeLabel} />
           <Stat label="수집됨" value={formatNumber(j.papers_collected)} />
           <Stat label="정규화됨" value={formatNumber(j.papers_processed)} />
         </CardBody>
@@ -123,6 +137,24 @@ export function JobDetail({ jobId }: { jobId: string }) {
           </div>
         ) : null}
       </Card>
+
+      {j.insight ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <span>AI 인사이트</span>
+              <Badge variant="accent">Groq</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardBody className="text-sm leading-relaxed text-[var(--color-fg)]">
+            {j.insight.split("\n\n").map((para, i) => (
+              <p key={i} className={i > 0 ? "mt-3" : ""}>
+                {para}
+              </p>
+            ))}
+          </CardBody>
+        </Card>
+      ) : null}
 
       <div className="flex items-center justify-between">
         <Tabs
@@ -143,7 +175,12 @@ export function JobDetail({ jobId }: { jobId: string }) {
       </div>
 
       {tab === "papers" && <PapersPanel jobId={jobId} disabled={!isAnalyzed} />}
-      {tab === "authors" && <AuthorsPanel jobId={jobId} disabled={!isAnalyzed} />}
+      {tab === "authors" && (
+        <div className="space-y-4">
+          <AuthorRecommendations jobId={jobId} />
+          <AuthorsPanel jobId={jobId} disabled={!isAnalyzed} />
+        </div>
+      )}
       {tab === "keywords" && (
         <KeywordsPanel jobId={jobId} disabled={!isAnalyzed} />
       )}

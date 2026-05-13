@@ -8,6 +8,7 @@
 import type {
   AuthorListItem,
   AuthorRead,
+  AuthorRecommendation,
   GraphResultDetail,
   GraphResultRead,
   JobCreatePayload,
@@ -116,6 +117,13 @@ export const authorsApi = {
       `/api/v1/jobs/${jobId}/authors?limit=${limit}&offset=${offset}`
     ),
   get: (authorId: string) => request<AuthorRead>(`/api/v1/authors/${authorId}`),
+  recommendations: (jobId: string, role?: string, limit = 50) => {
+    const q = new URLSearchParams({ limit: String(limit) });
+    if (role) q.set("role", role);
+    return request<AuthorRecommendation[]>(
+      `/api/v1/jobs/${jobId}/author-recommendations?${q}`
+    );
+  },
 };
 
 export const keywordsApi = {

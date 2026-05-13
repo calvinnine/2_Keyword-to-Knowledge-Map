@@ -24,6 +24,12 @@ class Settings(BaseSettings):
 
     semantic_scholar_api_key: str = ""
 
+    groq_api_key: str = ""
+    insight_model: str = "llama3-70b-8192"
+    insight_base_url: str = "https://api.groq.com/openai/v1"
+
+    ntis_api_key: str = ""
+
     job_default_max_papers: int = 20_000
     job_absolute_max_papers: int = 50_000
 

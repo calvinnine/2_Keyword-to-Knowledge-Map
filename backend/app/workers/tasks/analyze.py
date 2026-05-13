@@ -10,6 +10,9 @@ from app.analysis import (
     build_keyword_graph,
     compute_centrality,
     compute_clusters,
+    generate_insight,
+    compute_paper_metrics,
+    compute_author_metrics,
 )
 from app.database import SessionLocal
 from app.models.job import AnalysisJob, JobStatus
@@ -30,13 +33,17 @@ def analyze_graphs(self, job_id: str) -> dict:
         job.status = JobStatus.ANALYZING
         db.commit()
 
+        scope = job.publication_scope or "all"
         results = {}
+        paper_graph = None
+        author_graph = None
+
         for label, builder in [
             ("paper", build_paper_graph),
             ("author", build_author_graph),
             ("keyword", build_keyword_graph),
         ]:
-            graph = builder(db, job_uuid)
+            graph = builder(db, job_uuid, publication_scope=scope)
             db.flush()
             compute_centrality(db, graph)
             compute_clusters(db, graph)
@@ -47,6 +54,27 @@ def analyze_graphs(self, job_id: str) -> dict:
                 "edges": graph.edge_count,
                 "clusters": graph.cluster_count,
             }
+            if label == "paper":
+                paper_graph = graph
+            elif label == "author":
+                author_graph = graph
+
+        # Paper Evidence Weight + Author metrics / role labeling (Phase 3)
+        if paper_graph and author_graph:
+            try:
+                pew_map = compute_paper_metrics(db, job_uuid, paper_graph)
+                db.flush()
+                compute_author_metrics(db, job_uuid, author_graph, pew_map)
+                db.commit()
+                logger.info("PEW + AuthorMetrics computed for job %s", job_id)
+            except Exception as exc:
+                logger.warning("PEW/AuthorMetrics failed for job %s (non-fatal): %s", job_id, exc)
+                db.rollback()
+
+        # Generate Claude insight (best-effort; never fails the job)
+        insight = generate_insight(db, job_uuid)
+        if insight:
+            job.insight = insight
 
         job.status = JobStatus.COMPLETED
         job.completed_at = datetime.now(timezone.utc)

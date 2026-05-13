@@ -14,20 +14,24 @@ from sqlalchemy.orm import Session
 from app.models.paper import Paper, PaperKeyword
 from app.models.keyword import Keyword
 from app.models.graph import GraphResult, GraphNode, GraphEdge, GraphType
+from app.analysis.layout import assign_layout
 
 logger = logging.getLogger(__name__)
 
 _MIN_COOCCURRENCE_WEIGHT = 2
 
 
-def build_keyword_graph(db: Session, job_id: uuid.UUID) -> GraphResult:
+def build_keyword_graph(
+    db: Session, job_id: uuid.UUID, publication_scope: str = "all"
+) -> GraphResult:
     """Build keyword co-occurrence graph."""
+    from app.analysis.author_graph import _paper_id_subquery
 
     rows = db.execute(
         select(PaperKeyword.paper_id, PaperKeyword.keyword_id)
         .where(
             PaperKeyword.paper_id.in_(
-                select(Paper.id).where(Paper.job_id == job_id)
+                _paper_id_subquery(job_id, publication_scope)
             )
         )
     ).all()
@@ -52,6 +56,7 @@ def build_keyword_graph(db: Session, job_id: uuid.UUID) -> GraphResult:
     db.flush()
 
     keyword_to_node: dict[uuid.UUID, uuid.UUID] = {}
+    keyword_to_node_obj: dict[uuid.UUID, GraphNode] = {}
     for kw in keywords:
         node = GraphNode(
             id=uuid.uuid4(),
@@ -64,6 +69,7 @@ def build_keyword_graph(db: Session, job_id: uuid.UUID) -> GraphResult:
         )
         db.add(node)
         keyword_to_node[kw.id] = node.id
+        keyword_to_node_obj[kw.id] = node
 
     db.flush()
 
@@ -91,6 +97,10 @@ def build_keyword_graph(db: Session, job_id: uuid.UUID) -> GraphResult:
                 edge_type="co_occurrence",
             ))
             edge_count += 1
+
+    # Pre-compute layout using co-occurrence edges
+    cooc_edges = [(a, b) for (a, b) in cooc_weights if cooc_weights[(a, b)] >= _MIN_COOCCURRENCE_WEIGHT]
+    assign_layout(keyword_to_node_obj, cooc_edges)
 
     graph_result.node_count = len(keywords)
     graph_result.edge_count = edge_count

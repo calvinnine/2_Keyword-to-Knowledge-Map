@@ -6,6 +6,24 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.models.job import JobStatus
 
+_VALID_SCOPES = frozenset({"all", "wos", "scie", "ssci", "ahci", "esci"})
+
+
+def _validate_scope(value: str) -> None:
+    """Validate comma-separated publication scope string.
+
+    Accepts "all" or one-or-more of: wos, scie, ssci, ahci, esci.
+    "all" cannot be combined with other values.
+    """
+    parts = [p.strip().lower() for p in value.split(",") if p.strip()]
+    if not parts:
+        raise ValueError("publication_scope must not be empty")
+    invalid = set(parts) - _VALID_SCOPES
+    if invalid:
+        raise ValueError(f"Invalid scope value(s): {invalid}. Must be one of {_VALID_SCOPES}")
+    if "all" in parts and len(parts) > 1:
+        raise ValueError("'all' cannot be combined with other scope values")
+
 
 class JobCreate(BaseModel):
     keyword: str = Field(..., min_length=1, max_length=500)
@@ -13,6 +31,12 @@ class JobCreate(BaseModel):
     year_start: int | None = Field(default=None, ge=1900, le=2100)
     year_end: int | None = Field(default=None, ge=1900, le=2100)
     publication_types: list[str] | None = None
+    publication_scope: str = Field(default="all")
+
+    @model_validator(mode="after")
+    def validate_publication_scope(self) -> "JobCreate":
+        _validate_scope(self.publication_scope)
+        return self
 
     @model_validator(mode="after")
     def validate_year_range(self) -> "JobCreate":
@@ -34,6 +58,12 @@ class JobFromQuery(BaseModel):
     year_start: int | None = Field(default=None, ge=1900, le=2100)
     year_end: int | None = Field(default=None, ge=1900, le=2100)
     publication_types: list[str] | None = None
+    publication_scope: str = Field(default="all")
+
+    @model_validator(mode="after")
+    def validate_publication_scope(self) -> "JobFromQuery":
+        _validate_scope(self.publication_scope)
+        return self
 
 
 class ParsedQueryRead(BaseModel):
@@ -68,8 +98,10 @@ class JobRead(JobListItem):
     year_start: int | None
     year_end: int | None
     publication_types: list[str] | None
+    publication_scope: str = "all"
     error_message: str | None
     completed_at: datetime | None
     params: dict[str, Any] | None
+    insight: str | None = None
 
     model_config = {"from_attributes": True}

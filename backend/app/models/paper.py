@@ -34,9 +34,10 @@ class Paper(Base):
     # Venue
     venue_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     venue_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # journal / conference / preprint / other
+    venue_issn: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)  # linking ISSN from OpenAlex
 
-    # SCI/SSCI/SCIE classification stored as null until registry-based post-processing is applied
-    sci_classification: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # WoS classification: SCIE / SSCI / AHCI / ESCI — populated by ISSN lookup against wos_journals table
+    sci_classification: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
 
     # Citation counts from sources
     citation_count: Mapped[int] = mapped_column(Integer, default=0)
