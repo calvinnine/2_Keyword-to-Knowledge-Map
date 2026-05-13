@@ -15,7 +15,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { Badge } from "@/components/ui/Badge";
 import { JobStatusBadge } from "./JobStatusBadge";
 import { formatDateTime, formatNumber } from "@/lib/utils";
-import { PUBLICATION_SCOPE_OPTIONS } from "@/lib/types/api";
+import { PUBLICATION_SCOPE_OPTIONS, WOS_INDEX_OPTIONS } from "@/lib/types/api";
 import type { GraphType, Intent } from "@/lib/types/api";
 
 type TabKey = "papers" | "authors" | "keywords" | "graphs";
@@ -79,8 +79,17 @@ export function JobDetail({ jobId }: { jobId: string }) {
   const intent = j.params?.intent as Intent | undefined;
   const originalQuery = j.params?.original_query as string | undefined;
   const isAnalyzed = j.status === "completed";
-  const scopeLabel =
-    PUBLICATION_SCOPE_OPTIONS.find((o) => o.value === j.publication_scope)?.label ?? "전체";
+  const scopeLabel = (() => {
+    const raw = j.publication_scope ?? "all";
+    if (raw === "all") return "전체";
+    if (raw === "wos") return "WoS 전체";
+    // comma-separated multi-select, e.g. "scie,ssci"
+    const allOptions = [...PUBLICATION_SCOPE_OPTIONS, ...WOS_INDEX_OPTIONS];
+    return raw
+      .split(",")
+      .map((s) => allOptions.find((o) => o.value === s.trim())?.label ?? s.toUpperCase())
+      .join(" + ");
+  })();
 
   return (
     <div className="space-y-6">

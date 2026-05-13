@@ -33,17 +33,27 @@ export interface JobListItem {
 
 export type PublicationScope = "all" | "wos" | "scie" | "ssci" | "ahci" | "esci";
 
+/** Selectable WoS index checkboxes (excludes "all" / "wos" meta-options). */
+export const WOS_INDEX_OPTIONS: {
+  value: Exclude<PublicationScope, "all" | "wos">;
+  label: string;
+  description: string;
+}[] = [
+  { value: "scie", label: "SCIE", description: "자연과학 핵심 저널" },
+  { value: "ssci", label: "SSCI", description: "사회과학 핵심 저널" },
+  { value: "ahci", label: "AHCI", description: "인문학 핵심 저널" },
+  { value: "esci", label: "ESCI", description: "신진 학술지" },
+];
+
+/** All options including meta-values, used for display labels. */
 export const PUBLICATION_SCOPE_OPTIONS: {
   value: PublicationScope;
   label: string;
   description: string;
 }[] = [
-  { value: "all",  label: "전체",      description: "수집된 모든 논문" },
-  { value: "wos",  label: "WoS 전체",  description: "SCIE + SSCI + AHCI + ESCI 등재 저널" },
-  { value: "scie", label: "SCIE",      description: "자연과학 핵심 저널" },
-  { value: "ssci", label: "SSCI",      description: "사회과학 핵심 저널" },
-  { value: "ahci", label: "AHCI",      description: "인문학 핵심 저널" },
-  { value: "esci", label: "ESCI",      description: "신진 학술지" },
+  { value: "all",  label: "전체",     description: "수집된 모든 논문" },
+  { value: "wos",  label: "WoS 전체", description: "SCIE + SSCI + AHCI + ESCI 등재 저널" },
+  ...WOS_INDEX_OPTIONS,
 ];
 
 export interface JobRead extends JobListItem {

@@ -32,21 +32,34 @@ _EMBEDDING_MAX_NEIGHBORS = 5         # max embedding edges per paper
 
 
 def _scope_filter(scope: str):
-    """Return SQLAlchemy filter clause for sci_classification based on scope.
+    """Return SQLAlchemy filter clause for sci_classification.
 
-    Scope values:
-      all   — no filter
-      wos   — any WoS index (SCIE | SSCI | AHCI | ESCI)
-      scie  — SCIE only
-      ssci  — SSCI only
-      ahci  — AHCI only
-      esci  — ESCI only
+    *scope* is a comma-separated string of scope tokens, e.g. "scie,ssci".
+    Tokens: all | wos | scie | ssci | ahci | esci
+      all  — no filter (returns None)
+      wos  — any WoS index (SCIE | SSCI | AHCI | ESCI)
+      scie/ssci/ahci/esci — exact match for that index
+
+    Multiple tokens are OR-combined, e.g. "scie,ssci" → SCIE OR SSCI.
     """
-    if scope == "wos":
-        return Paper.sci_classification.in_(["SCIE", "SSCI", "AHCI", "ESCI"])
-    if scope in ("scie", "ssci", "ahci", "esci"):
-        return Paper.sci_classification == scope.upper()
-    return None  # "all" — no filter
+    from sqlalchemy import or_
+
+    parts = [p.strip().lower() for p in scope.split(",") if p.strip()]
+    if not parts or "all" in parts:
+        return None  # no filter
+
+    wanted: set[str] = set()
+    for part in parts:
+        if part == "wos":
+            wanted.update({"SCIE", "SSCI", "AHCI", "ESCI"})
+        elif part in ("scie", "ssci", "ahci", "esci"):
+            wanted.add(part.upper())
+
+    if not wanted:
+        return None
+    if len(wanted) == 1:
+        return Paper.sci_classification == next(iter(wanted))
+    return Paper.sci_classification.in_(list(wanted))
 
 
 def build_paper_graph(
