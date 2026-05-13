@@ -16,6 +16,7 @@ const ROLE_DESCRIPTIONS: Record<RoleLabel, string> = {
   "Emerging Researcher": "최근 빠르게 부상 중인 연구자",
   "Niche Specialist": "특정 세부 클러스터 집중 전문가",
   "Domestic R&D Actor": "국내 R&D와 관련성이 높은 연구자",
+  "Strategic Connector": "글로벌 영향력과 국내 R&D 모두 높은 핵심 연구자",
 };
 
 const CAUTION_LABELS: Record<string, string> = {

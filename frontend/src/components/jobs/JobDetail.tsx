@@ -15,11 +15,12 @@ import { Tabs } from "@/components/ui/Tabs";
 import { Badge } from "@/components/ui/Badge";
 import { JobStatusBadge } from "./JobStatusBadge";
 import { AuthorRecommendations } from "@/components/authors/AuthorRecommendations";
+import { NtisPanel } from "@/components/ntis/NtisPanel";
 import { formatDateTime, formatNumber } from "@/lib/utils";
 import { PUBLICATION_SCOPE_OPTIONS, WOS_INDEX_OPTIONS } from "@/lib/types/api";
 import type { GraphType, Intent } from "@/lib/types/api";
 
-type TabKey = "papers" | "authors" | "keywords" | "graphs";
+type TabKey = "papers" | "authors" | "keywords" | "graphs" | "ntis";
 
 const intentLabel: Record<Intent, string> = {
   author_influence: "저자 영향력",
@@ -165,6 +166,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
             { value: "authors", label: "저자" },
             { value: "keywords", label: "키워드" },
             { value: "graphs", label: "그래프" },
+            { value: "ntis", label: "NTIS" },
           ]}
         />
         {!isAnalyzed ? (
@@ -185,6 +187,13 @@ export function JobDetail({ jobId }: { jobId: string }) {
         <KeywordsPanel jobId={jobId} disabled={!isAnalyzed} />
       )}
       {tab === "graphs" && <GraphsPanel jobId={jobId} disabled={!isAnalyzed} />}
+      {tab === "ntis" && (
+        isAnalyzed
+          ? <NtisPanel jobId={jobId} />
+          : <Card className="p-8 text-center text-sm text-[var(--color-fg-muted)]">
+              분석이 완료된 후 NTIS 오버레이를 실행할 수 있습니다.
+            </Card>
+      )}
     </div>
   );
 }

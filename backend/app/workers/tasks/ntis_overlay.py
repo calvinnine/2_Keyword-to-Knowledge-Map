@@ -18,6 +18,7 @@ import uuid
 from sqlalchemy import select
 
 from app.analysis.comparative import run_comparative_analysis
+from app.analysis.domestic_score import compute_domestic_scores
 from app.collectors.ntis import NtisCollector
 from app.config import settings
 from app.database import SessionLocal
@@ -95,11 +96,23 @@ def run_ntis_overlay(self, job_id: str) -> dict:
         comparative_count = run_comparative_analysis(db, job_uuid)
         db.commit()
 
+        # --- 4. Domestic R&D Relevance scoring + Strategic Connector label ---
+        domestic_updated = 0
+        try:
+            domestic_updated = compute_domestic_scores(db, job_uuid)
+            db.commit()
+        except Exception as exc:
+            logger.warning(
+                "compute_domestic_scores failed for job %s (non-fatal): %s", job_id, exc
+            )
+            db.rollback()
+
         result = {
             "job_id": job_id,
             "ntis_projects_collected": projects_collected,
             "paper_direct_matches": paper_direct_matches,
             "comparative_matches": comparative_count,
+            "domestic_scores_updated": domestic_updated,
         }
         logger.info("NTIS overlay complete for job %s: %s", job_id, result)
         return result

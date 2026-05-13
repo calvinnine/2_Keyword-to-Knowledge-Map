@@ -150,6 +150,7 @@ export const ROLE_LABELS = [
   "Emerging Researcher",
   "Niche Specialist",
   "Domestic R&D Actor",
+  "Strategic Connector",
 ] as const;
 
 export type RoleLabel = (typeof ROLE_LABELS)[number];
@@ -204,4 +205,45 @@ export interface GraphResultDetail extends GraphResultRead {
   nodes: GraphNodeRead[];
   edges: GraphEdgeRead[];
   build_params: Record<string, unknown> | null;
+}
+
+// ---------------------------------------------------------------------------
+// NTIS
+// ---------------------------------------------------------------------------
+
+export interface NtisProjectSummary {
+  id: string;
+  ntis_project_id: string | null;
+  title: string | null;
+  govt_dept: string | null;
+  research_agency: string | null;
+  performing_org: string | null;
+  total_budget: number | null;
+  start_year: number | null;
+  end_year: number | null;
+  status: string | null;
+  keywords: string[] | null;
+}
+
+export interface NtisOverview {
+  job_id: string;
+  ntis_project_count: number;
+  comparative_match_count: number;
+  projects: NtisProjectSummary[];
+}
+
+export interface NtisOverlayTriggerResponse {
+  job_id: string;
+  task_id: string;
+  message: string;
+}
+
+export interface AuthorMatrixItem {
+  author_id: string;
+  name: string;
+  global_scholarly_impact: number | null;
+  domestic_rnd_relevance: number | null;
+  role_labels: string[] | null;
+  paper_count: number;
+  citation_count: number;
 }

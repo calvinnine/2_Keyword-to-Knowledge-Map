@@ -7,6 +7,7 @@
 
 import type {
   AuthorListItem,
+  AuthorMatrixItem,
   AuthorRead,
   AuthorRecommendation,
   GraphResultDetail,
@@ -17,6 +18,8 @@ import type {
   JobRead,
   JobStatus,
   KeywordRead,
+  NtisOverlayTriggerResponse,
+  NtisOverview,
   PaperListItem,
   PaperRead,
   ParsedQuery,
@@ -159,4 +162,23 @@ export const graphsApi = {
 export const healthApi = {
   check: () =>
     request<{ status: string; env: string }>(`/api/v1/health`),
+};
+
+// ---------------------------------------------------------------------------
+// NTIS
+// ---------------------------------------------------------------------------
+
+export const ntisApi = {
+  triggerOverlay: (jobId: string) =>
+    request<NtisOverlayTriggerResponse>(`/api/v1/jobs/${jobId}/ntis-overlay`, {
+      method: "POST",
+    }),
+
+  getOverview: (jobId: string) =>
+    request<NtisOverview>(`/api/v1/jobs/${jobId}/ntis`),
+
+  getMatrix: (jobId: string, limit = 200) =>
+    request<AuthorMatrixItem[]>(
+      `/api/v1/jobs/${jobId}/ntis/matrix?limit=${limit}`
+    ),
 };

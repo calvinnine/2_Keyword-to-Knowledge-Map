@@ -94,3 +94,7 @@ class AuthorMetrics(Base):
 
     # Caution flags — list of flag code strings, e.g. ["OLD_IMPACT_ONLY"]
     caution_flags: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+    # Domestic R&D relevance [0, 1] — computed after NTIS overlay
+    # 0 = no evidence of domestic R&D activity; 1 = strong NTIS match + KR affiliation
+    domestic_rnd_relevance: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)

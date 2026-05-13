@@ -8,7 +8,9 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.author import Author
 from app.models.job import AnalysisJob, JobStatus
+from app.models.metrics import AuthorMetrics
 from app.models.ntis import NtisProject, ComparativeResult
 from app.workers.tasks.ntis_overlay import run_ntis_overlay
 
@@ -58,6 +60,17 @@ class NtisOverviewResponse(BaseModel):
     ntis_project_count: int
     comparative_match_count: int
     projects: list[NtisProjectSummary]
+
+
+class AuthorMatrixItem(BaseModel):
+    """Author data point for the Global Impact × Domestic R&D matrix."""
+    author_id: uuid.UUID
+    name: str
+    global_scholarly_impact: float | None
+    domestic_rnd_relevance: float | None
+    role_labels: list | None
+    paper_count: int
+    citation_count: int
 
 
 # ---------------------------------------------------------------------------
@@ -149,3 +162,52 @@ def list_comparative_results(
 
     rows = db.execute(stmt).scalars().all()
     return [ComparativeResultItem.model_validate(r) for r in rows]
+
+
+@router.get("/jobs/{job_id}/ntis/matrix", response_model=list[AuthorMatrixItem])
+def get_impact_matrix(
+    job_id: uuid.UUID,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    """Return author data points for the Global Impact × Domestic R&D matrix.
+
+    Only includes authors with at least one score computed (either GSI or
+    domestic_rnd_relevance). Ordered by global_scholarly_impact desc.
+    """
+    job = db.get(AnalysisJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    rows = db.execute(
+        select(
+            AuthorMetrics.author_id,
+            AuthorMetrics.global_scholarly_impact,
+            AuthorMetrics.domestic_rnd_relevance,
+            AuthorMetrics.role_labels,
+            Author.name,
+            Author.paper_count,
+            Author.citation_count,
+        )
+        .join(Author, Author.id == AuthorMetrics.author_id)
+        .where(AuthorMetrics.job_id == job_id)
+        .where(
+            (AuthorMetrics.global_scholarly_impact.isnot(None))
+            | (AuthorMetrics.domestic_rnd_relevance.isnot(None))
+        )
+        .order_by(AuthorMetrics.global_scholarly_impact.desc().nulls_last())
+        .limit(limit)
+    ).all()
+
+    return [
+        AuthorMatrixItem(
+            author_id=r.author_id,
+            name=r.name,
+            global_scholarly_impact=r.global_scholarly_impact,
+            domestic_rnd_relevance=r.domestic_rnd_relevance,
+            role_labels=r.role_labels,
+            paper_count=r.paper_count,
+            citation_count=r.citation_count,
+        )
+        for r in rows
+    ]
