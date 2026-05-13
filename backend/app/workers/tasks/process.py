@@ -82,6 +82,9 @@ def process_papers(self, job_id: str) -> dict:
 
         # SCI/SSCI/ESCI classification (heuristic, best-effort)
         sci_classified = classify_papers(db, job_uuid)
+
+        # Aggregate author paper_count / citation_count
+        service.update_author_stats()
         db.commit()
 
         job.papers_processed = processed

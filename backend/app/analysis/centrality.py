@@ -22,7 +22,10 @@ from app.models.graph import GraphResult, GraphNode, GraphEdge, CentralityResult
 
 logger = logging.getLogger(__name__)
 
-_BETWEENNESS_SAMPLE_THRESHOLD = 2_000   # NetworkX sampled betweenness above this
+_BETWEENNESS_SAMPLE_THRESHOLD = 300     # full calc only for tiny graphs (hang fix)
+_CLOSENESS_SAMPLE_THRESHOLD = 500       # closeness is O(VE); sample on larger graphs
+_BETWEENNESS_K = 200
+_CLOSENESS_K = 200
 _LARGE_GRAPH_THRESHOLD = 5_000          # switch to igraph above this
 
 
@@ -108,8 +111,9 @@ def compute_centrality(db: Session, graph_result: GraphResult) -> int:
 
 def _nx_betweenness(G: nx.Graph, graph_id) -> dict:
     try:
-        if G.number_of_nodes() > _BETWEENNESS_SAMPLE_THRESHOLD:
-            k_sample = min(500, G.number_of_nodes())
+        n = G.number_of_nodes()
+        if n > _BETWEENNESS_SAMPLE_THRESHOLD:
+            k_sample = min(_BETWEENNESS_K, n)
             return nx.betweenness_centrality(G, k=k_sample, weight="weight", seed=42)
         return nx.betweenness_centrality(G, weight="weight")
     except Exception as exc:
@@ -119,6 +123,10 @@ def _nx_betweenness(G: nx.Graph, graph_id) -> dict:
 
 def _nx_closeness(G: nx.Graph, graph_id) -> dict:
     try:
+        n = G.number_of_nodes()
+        if n > _CLOSENESS_SAMPLE_THRESHOLD:
+            sample_nodes = list(G.nodes)[:_CLOSENESS_K]
+            return {v: nx.closeness_centrality(G, u=v) for v in sample_nodes}
         return nx.closeness_centrality(G)
     except Exception as exc:
         logger.warning("Closeness failed for graph %s: %s", graph_id, exc)
