@@ -292,47 +292,59 @@ function CitationCell({
     );
   }
 
-  const sourceLabel =
+  const j = citation_by_journal;
+  const p = citation_by_preprint;
+  const hasBreakdown = j !== null || p !== null;
+  // The breakdown labels what TYPE of papers cited this one.
+  // It is sampled from S2's citation list and may not sum to citation_count.
+  const breakdownSum = (j ?? 0) + (p ?? 0);
+  const breakdownGap = hasBreakdown && breakdownSum < citation_count
+    ? citation_count - breakdownSum
+    : 0;
+
+  // Tooltip explains the metrics so users don't expect them to sum.
+  const tooltipParts: string[] = [];
+  tooltipParts.push(
     citation_source === "s2"
       ? "출처: Semantic Scholar"
       : citation_source === "openalex"
       ? "출처: OpenAlex (sanity check 통과)"
-      : null;
-
-  // Build tooltip with breakdown details
-  const tooltipParts: string[] = [];
-  if (sourceLabel) tooltipParts.push(sourceLabel);
+      : "출처: 미상"
+  );
+  if (hasBreakdown) {
+    tooltipParts.push(
+      `인용한 논문 분포: 저널/학회 ${j ?? 0}편, 프리프린트 ${p ?? 0}편` +
+        (breakdownGap > 0 ? `, 기타·미분류 ${breakdownGap}편` : "")
+    );
+  }
   if (influential_citation_count !== null) {
-    tooltipParts.push(`핵심 인용 (S2 AI 판정): ${influential_citation_count}`);
+    tooltipParts.push(
+      `핵심 인용 (S2 AI 판정, 총 인용의 부분집합): ${influential_citation_count}`
+    );
   }
-  if (citation_by_journal !== null || citation_by_preprint !== null) {
-    const j = citation_by_journal ?? 0;
-    const p = citation_by_preprint ?? 0;
-    tooltipParts.push(`인용 출처: 저널 ${j}, 프리프린트 ${p}`);
-  }
-  const tooltip = tooltipParts.length > 0 ? tooltipParts.join("\n") : undefined;
+  const tooltip = tooltipParts.join("\n");
 
-  // The detail line under the headline number: shows journal/preprint split + influential
   const showDetail =
-    !compact &&
-    (citation_by_journal !== null ||
-      citation_by_preprint !== null ||
-      influential_citation_count !== null);
+    !compact && (hasBreakdown || influential_citation_count !== null);
 
   return (
     <div className="inline-block text-right" title={tooltip}>
-      <div className={`font-mono ${compact ? "text-xs" : "text-sm"} text-[var(--color-fg)]`}>
+      <div
+        className={`font-mono ${compact ? "text-xs" : "text-sm"} text-[var(--color-fg)]`}
+      >
         {formatNumber(citation_count)}
       </div>
       {showDetail ? (
-        <div className="mt-0.5 text-[10px] text-[var(--color-fg-subtle)] leading-tight">
-          {citation_by_journal !== null || citation_by_preprint !== null ? (
-            <div>
-              저널 {citation_by_journal ?? 0} · 프리 {citation_by_preprint ?? 0}
+        <div className="mt-0.5 space-y-0 text-[10px] leading-tight text-[var(--color-fg-subtle)]">
+          {hasBreakdown ? (
+            <div className="whitespace-nowrap">
+              저널 {j ?? 0} · 프리 {p ?? 0}
             </div>
           ) : null}
           {influential_citation_count !== null ? (
-            <div>핵심 {influential_citation_count}</div>
+            <div className="whitespace-nowrap">
+              핵심 {influential_citation_count}
+            </div>
           ) : null}
         </div>
       ) : null}
