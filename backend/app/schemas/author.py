@@ -19,6 +19,12 @@ class AuthorListItem(BaseModel):
     openalex_id: str | None
     paper_count: int
     citation_count: int
+    # Affiliation from the author's most recent paper in this analysis.
+    # `institution_name` comes from the normalised Institution table when matched;
+    # `raw_affiliation` is the original free-text affiliation string (fallback when
+    # OpenAlex didn't disambiguate to a known institution).
+    latest_institution_name: str | None = None
+    latest_raw_affiliation: str | None = None
 
     model_config = {"from_attributes": True}
 

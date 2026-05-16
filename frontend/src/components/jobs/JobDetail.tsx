@@ -299,28 +299,51 @@ function AuthorsPanel({ jobId, disabled }: { jobId: string; disabled: boolean })
       <table className="w-full text-sm">
         <thead className="border-b border-[var(--color-border)] bg-[var(--color-surface-2)] text-left text-xs uppercase tracking-wider text-[var(--color-fg-muted)]">
           <tr>
-            <th className="px-5 py-2.5 font-medium">이름</th>
+            <th className="px-5 py-2.5 font-medium">이름 · 소속</th>
             <th className="px-5 py-2.5 font-medium text-right">논문 수</th>
             <th className="px-5 py-2.5 font-medium text-right">인용 수</th>
           </tr>
         </thead>
         <tbody>
-          {q.data.map((a) => (
-            <tr
-              key={a.id}
-              className="border-b border-[var(--color-border)] last:border-0"
-            >
-              <td className="px-5 py-2.5 font-medium text-[var(--color-fg)]">
-                {a.name}
-              </td>
-              <td className="px-5 py-2.5 text-right font-mono">
-                {formatNumber(a.paper_count)}
-              </td>
-              <td className="px-5 py-2.5 text-right font-mono">
-                {formatNumber(a.citation_count)}
-              </td>
-            </tr>
-          ))}
+          {q.data.map((a) => {
+            // Prefer normalised institution name; fall back to raw affiliation.
+            // raw_affiliation can be long; trim to ~80 chars for readability.
+            const affLabel =
+              a.latest_institution_name ??
+              (a.latest_raw_affiliation
+                ? a.latest_raw_affiliation.length > 80
+                  ? a.latest_raw_affiliation.slice(0, 77) + "…"
+                  : a.latest_raw_affiliation
+                : null);
+            return (
+              <tr
+                key={a.id}
+                className="border-b border-[var(--color-border)] last:border-0"
+              >
+                <td className="px-5 py-2.5">
+                  <div className="font-medium text-[var(--color-fg)]">{a.name}</div>
+                  {affLabel ? (
+                    <div
+                      className="mt-0.5 text-xs text-[var(--color-fg-muted)]"
+                      title={a.latest_raw_affiliation ?? undefined}
+                    >
+                      {affLabel}
+                    </div>
+                  ) : (
+                    <div className="mt-0.5 text-xs text-[var(--color-fg-subtle)]">
+                      소속 정보 없음
+                    </div>
+                  )}
+                </td>
+                <td className="px-5 py-2.5 text-right font-mono align-top">
+                  {formatNumber(a.paper_count)}
+                </td>
+                <td className="px-5 py-2.5 text-right font-mono align-top">
+                  {formatNumber(a.citation_count)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </Card>

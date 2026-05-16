@@ -125,6 +125,8 @@ export interface AuthorListItem {
   openalex_id: string | null;
   paper_count: number;
   citation_count: number;
+  latest_institution_name: string | null;
+  latest_raw_affiliation: string | null;
 }
 
 export interface AuthorRead extends AuthorListItem {

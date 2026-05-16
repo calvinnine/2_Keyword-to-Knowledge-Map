@@ -3,12 +3,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_non_public
 from app.database import get_db
-from app.models.author import Author
+from app.models.author import Author, AuthorAffiliation
+from app.models.institution import Institution
 from app.models.metrics import AuthorMetrics
 from app.models.paper import Paper, PaperAuthor
 from app.schemas.author import AuthorListItem, AuthorRead
@@ -53,8 +54,13 @@ def list_authors_for_job(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-) -> list[Author]:
-    stmt = (
+) -> list[AuthorListItem]:
+    """List authors active in this job, with the affiliation from their MOST RECENT
+    paper attached. "Most recent" is determined by publication_date (fallback:
+    publication_year), restricted to papers within this job.
+    """
+    # Step 1: page of authors ordered by citation_count.
+    author_stmt = (
         select(Author)
         .join(PaperAuthor, PaperAuthor.author_id == Author.id)
         .join(Paper, Paper.id == PaperAuthor.paper_id)
@@ -64,7 +70,55 @@ def list_authors_for_job(
         .limit(limit)
         .offset(offset)
     )
-    return list(db.execute(stmt).scalars().all())
+    authors = list(db.execute(author_stmt).scalars().all())
+    if not authors:
+        return []
+
+    author_ids = [a.id for a in authors]
+
+    # Step 2: latest affiliation per author within this job, via DISTINCT ON.
+    # `DISTINCT ON (author_id) ... ORDER BY author_id, publication_date DESC NULLS LAST`
+    # picks one row per author — the row with the newest paper.
+    latest_aff_stmt = (
+        select(
+            AuthorAffiliation.author_id,
+            AuthorAffiliation.raw_affiliation,
+            Institution.name.label("institution_name"),
+        )
+        .outerjoin(Institution, Institution.id == AuthorAffiliation.institution_id)
+        .join(Paper, Paper.id == AuthorAffiliation.paper_id)
+        .where(
+            AuthorAffiliation.author_id.in_(author_ids),
+            Paper.job_id == job_id,
+        )
+        .order_by(
+            AuthorAffiliation.author_id,
+            Paper.publication_date.desc().nullslast(),
+            Paper.publication_year.desc().nullslast(),
+        )
+        .distinct(AuthorAffiliation.author_id)
+    )
+    aff_map: dict[uuid.UUID, dict[str, str | None]] = {}
+    for row in db.execute(latest_aff_stmt).all():
+        aff_map[row.author_id] = {
+            "institution_name": row.institution_name,
+            "raw_affiliation": row.raw_affiliation,
+        }
+
+    # Step 3: stitch into response objects.
+    result: list[AuthorListItem] = []
+    for a in authors:
+        aff = aff_map.get(a.id, {})
+        result.append(AuthorListItem(
+            id=a.id,
+            name=a.name,
+            openalex_id=a.openalex_id,
+            paper_count=a.paper_count,
+            citation_count=a.citation_count,
+            latest_institution_name=aff.get("institution_name"),
+            latest_raw_affiliation=aff.get("raw_affiliation"),
+        ))
+    return result
 
 
 @router.get(
