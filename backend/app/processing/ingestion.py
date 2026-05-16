@@ -75,7 +75,10 @@ class IngestionService:
             venue_name=_oa_venue_name(payload),
             venue_type=pub_type,
             venue_issn=_oa_venue_issn(payload),
-            citation_count=payload.get("cited_by_count") or 0,
+            # citation_count is intentionally left NULL here. OpenAlex's cited_by_count
+            # is known to be unreliable (cross-work contamination). We populate this
+            # later via S2 batch lookup in citation_enrichment.enrich_citations_from_s2.
+            citation_count=None,
             reference_count=payload.get("referenced_works_count") or 0,
             openalex_id=payload.get("id"),
             is_open_access=payload.get("open_access", {}).get("is_oa") if payload.get("open_access") else None,
@@ -168,7 +171,11 @@ class IngestionService:
             publication_date=payload.get("publicationDate"),
             venue_name=_s2_venue_name(payload),
             venue_type=pub_type,
-            citation_count=payload.get("citationCount") or 0,
+            # citation_count from S2 here is from the SEARCH endpoint payload —
+            # the dedicated enrichment pass (citation_enrichment) refetches via the
+            # /paper/batch endpoint for consistency across ingestion sources. Keep
+            # this value too as a fallback for S2-only papers (no DOI overlap).
+            citation_count=payload.get("citationCount"),
             reference_count=payload.get("referenceCount") or 0,
             semantic_scholar_id=payload.get("paperId"),
             pubmed_id=ext_ids.get("PubMed"),

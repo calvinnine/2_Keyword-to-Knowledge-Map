@@ -39,8 +39,11 @@ class Paper(Base):
     # WoS classification: SCIE / SSCI / AHCI / ESCI — populated by ISSN lookup against wos_journals table
     sci_classification: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
 
-    # Citation counts from sources
-    citation_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Citation count — sourced from Semantic Scholar (NOT OpenAlex; OA had data-integrity
+    # issues such as citation counts merged across unrelated works). `None` indicates
+    # the count could not be verified via S2 (paper not in S2, no DOI, or API miss).
+    # See WORK_PROGRESS.md 2026-05-16 for rationale.
+    citation_count: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     reference_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # External identifiers

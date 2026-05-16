@@ -11,7 +11,7 @@ class PaperListItem(BaseModel):
     publication_year: int | None
     venue_name: str | None
     venue_type: str | None
-    citation_count: int
+    citation_count: int | None  # null when unverified by Semantic Scholar
     openalex_id: str | None
 
     model_config = {"from_attributes": True}

@@ -268,8 +268,11 @@ function PapersPanel({ jobId, disabled }: { jobId: string; disabled: boolean }) 
               <td className="px-5 py-2.5 align-top text-[var(--color-fg-muted)]">
                 {p.venue_name ?? "—"}
               </td>
-              <td className="px-5 py-2.5 align-top text-right font-mono text-[var(--color-fg)]">
-                {formatNumber(p.citation_count)}
+              <td
+                className="px-5 py-2.5 align-top text-right font-mono text-[var(--color-fg)]"
+                title={p.citation_count === null ? "Semantic Scholar로 검증되지 않음" : undefined}
+              >
+                {p.citation_count === null ? "—" : formatNumber(p.citation_count)}
               </td>
             </tr>
           ))}

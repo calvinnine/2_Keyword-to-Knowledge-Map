@@ -21,7 +21,7 @@ def list_papers_for_job(
     stmt = (
         select(Paper)
         .where(Paper.job_id == job_id)
-        .order_by(Paper.citation_count.desc())
+        .order_by(Paper.citation_count.desc().nullslast())
         .limit(limit)
         .offset(offset)
     )

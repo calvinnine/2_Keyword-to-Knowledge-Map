@@ -100,7 +100,7 @@ export interface PaperListItem {
   publication_year: number | null;
   venue_name: string | null;
   venue_type: string | null;
-  citation_count: number;
+  citation_count: number | null;
   openalex_id: string | null;
 }
 

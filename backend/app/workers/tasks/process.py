@@ -11,6 +11,7 @@ from app.models.raw import RawPayload
 from app.models.paper import Paper
 from app.processing.ingestion import IngestionService
 from app.processing.sci_classifier import classify_papers
+from app.processing.citation_enrichment import enrich_citations_from_s2
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,10 @@ def process_papers(self, job_id: str) -> dict:
         # SCI/SSCI/ESCI classification (heuristic, best-effort)
         sci_classified = classify_papers(db, job_uuid)
 
+        # Citation enrichment via Semantic Scholar (replaces unreliable OpenAlex counts).
+        # Must run BEFORE author/keyword aggregations so they see the corrected numbers.
+        enrich_stats = enrich_citations_from_s2(db, job_uuid)
+
         # Aggregate author paper_count / citation_count
         service.update_author_stats()
         # Aggregate keyword paper_count
@@ -107,6 +112,7 @@ def process_papers(self, job_id: str) -> dict:
             "deduped": deduped,
             "citations": citation_count,
             "sci_classified": sci_classified,
+            "s2_enrichment": enrich_stats,
         }
     except Exception as exc:
         logger.exception("process_papers failed for job %s", job_id)

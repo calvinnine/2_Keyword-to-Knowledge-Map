@@ -249,7 +249,9 @@ def _add_embedding_edges(
         )[:_EMBEDDING_MAX_PAPERS]
 
     try:
-        model = SentenceTransformer(_EMBEDDING_MODEL)
+        # Force CPU device to avoid MPS+fork() crash inside Celery prefork workers on macOS
+        # (PyTorch's MPS backend initialised pre-fork → SIGABRT in child process).
+        model = SentenceTransformer(_EMBEDDING_MODEL, device="cpu")
         abstracts = [p.abstract for p in papers_with_abstract]
         embeddings = model.encode(abstracts, batch_size=64, show_progress_bar=False)
 
