@@ -101,6 +101,10 @@ export interface PaperListItem {
   venue_name: string | null;
   venue_type: string | null;
   citation_count: number | null;
+  citation_source: "s2" | "openalex" | null;
+  influential_citation_count: number | null;
+  citation_by_journal: number | null;
+  citation_by_preprint: number | null;
   openalex_id: string | null;
 }
 

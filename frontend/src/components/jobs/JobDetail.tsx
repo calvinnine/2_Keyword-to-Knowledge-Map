@@ -215,6 +215,132 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers: venue badge + citation cell (used by Papers tab + AuthorRow expand)
+// ---------------------------------------------------------------------------
+
+function VenueBadge({
+  type,
+  size = "sm",
+}: {
+  type: string | null;
+  size?: "sm" | "xs";
+}) {
+  if (!type) return null;
+  // OpenAlex `type` values we typically see: article, preprint, book-chapter, etc.
+  const t = type.toLowerCase();
+  let label = "기타";
+  let cls = "border-[var(--color-border)] text-[var(--color-fg-subtle)]";
+  if (t === "preprint" || t.includes("preprint")) {
+    label = "프리프린트";
+    cls =
+      "border-[var(--color-warning-soft)] bg-[var(--color-warning-soft)] text-[var(--color-warning)]";
+  } else if (
+    t === "article" ||
+    t === "journal-article" ||
+    t === "journal" ||
+    t.includes("journal")
+  ) {
+    label = "저널";
+    cls =
+      "border-[var(--color-accent-soft)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]";
+  } else if (t === "conference" || t === "proceedings-article") {
+    label = "학회";
+    cls =
+      "border-[var(--color-info-soft)] bg-[var(--color-info-soft)] text-[var(--color-info)]";
+  } else if (t === "book" || t.includes("book")) {
+    label = "도서";
+  }
+  const sizeCls =
+    size === "xs"
+      ? "text-[9px] px-1 py-0"
+      : "text-[10px] px-1.5 py-0.5";
+  return (
+    <span
+      className={`shrink-0 rounded-[var(--radius-sm)] border ${cls} ${sizeCls} font-medium`}
+      title={`venue_type: ${type}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function CitationCell({
+  paper,
+  compact = false,
+}: {
+  paper: import("@/lib/types/api").PaperListItem;
+  compact?: boolean;
+}) {
+  const {
+    citation_count,
+    citation_source,
+    influential_citation_count,
+    citation_by_journal,
+    citation_by_preprint,
+  } = paper;
+
+  if (citation_count === null) {
+    return (
+      <span
+        className={`font-mono text-[var(--color-fg-subtle)] ${
+          compact ? "text-xs" : "text-sm"
+        }`}
+        title="S2·OpenAlex 모두에서 신뢰 가능한 인용수를 얻지 못했습니다"
+      >
+        —
+      </span>
+    );
+  }
+
+  const sourceLabel =
+    citation_source === "s2"
+      ? "출처: Semantic Scholar"
+      : citation_source === "openalex"
+      ? "출처: OpenAlex (sanity check 통과)"
+      : null;
+
+  // Build tooltip with breakdown details
+  const tooltipParts: string[] = [];
+  if (sourceLabel) tooltipParts.push(sourceLabel);
+  if (influential_citation_count !== null) {
+    tooltipParts.push(`핵심 인용 (S2 AI 판정): ${influential_citation_count}`);
+  }
+  if (citation_by_journal !== null || citation_by_preprint !== null) {
+    const j = citation_by_journal ?? 0;
+    const p = citation_by_preprint ?? 0;
+    tooltipParts.push(`인용 출처: 저널 ${j}, 프리프린트 ${p}`);
+  }
+  const tooltip = tooltipParts.length > 0 ? tooltipParts.join("\n") : undefined;
+
+  // The detail line under the headline number: shows journal/preprint split + influential
+  const showDetail =
+    !compact &&
+    (citation_by_journal !== null ||
+      citation_by_preprint !== null ||
+      influential_citation_count !== null);
+
+  return (
+    <div className="inline-block text-right" title={tooltip}>
+      <div className={`font-mono ${compact ? "text-xs" : "text-sm"} text-[var(--color-fg)]`}>
+        {formatNumber(citation_count)}
+      </div>
+      {showDetail ? (
+        <div className="mt-0.5 text-[10px] text-[var(--color-fg-subtle)] leading-tight">
+          {citation_by_journal !== null || citation_by_preprint !== null ? (
+            <div>
+              저널 {citation_by_journal ?? 0} · 프리 {citation_by_preprint ?? 0}
+            </div>
+          ) : null}
+          {influential_citation_count !== null ? (
+            <div>핵심 {influential_citation_count}</div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Panels
 // ---------------------------------------------------------------------------
 
@@ -248,19 +374,24 @@ function PapersPanel({ jobId, disabled }: { jobId: string; disabled: boolean }) 
               className="border-b border-[var(--color-border)] last:border-0"
             >
               <td className="px-5 py-2.5 align-top">
-                <div className="line-clamp-2 font-medium text-[var(--color-fg)]">
-                  {p.title ?? "(제목 없음)"}
+                <div className="flex items-start gap-2">
+                  <div className="flex-1">
+                    <div className="line-clamp-2 font-medium text-[var(--color-fg)]">
+                      {p.title ?? "(제목 없음)"}
+                    </div>
+                    {p.doi ? (
+                      <a
+                        href={`https://doi.org/${p.doi}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-0.5 inline-block font-mono text-[11px] text-[var(--color-fg-subtle)] hover:text-[var(--color-accent)]"
+                      >
+                        {p.doi}
+                      </a>
+                    ) : null}
+                  </div>
+                  <VenueBadge type={p.venue_type} />
                 </div>
-                {p.doi ? (
-                  <a
-                    href={`https://doi.org/${p.doi}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-0.5 inline-block font-mono text-[11px] text-[var(--color-fg-subtle)] hover:text-[var(--color-accent)]"
-                  >
-                    {p.doi}
-                  </a>
-                ) : null}
               </td>
               <td className="px-5 py-2.5 align-top text-[var(--color-fg-muted)]">
                 {p.publication_year ?? "—"}
@@ -268,11 +399,8 @@ function PapersPanel({ jobId, disabled }: { jobId: string; disabled: boolean }) 
               <td className="px-5 py-2.5 align-top text-[var(--color-fg-muted)]">
                 {p.venue_name ?? "—"}
               </td>
-              <td
-                className="px-5 py-2.5 align-top text-right font-mono text-[var(--color-fg)]"
-                title={p.citation_count === null ? "Semantic Scholar로 검증되지 않음" : undefined}
-              >
-                {p.citation_count === null ? "—" : formatNumber(p.citation_count)}
+              <td className="px-5 py-2.5 align-top text-right">
+                <CitationCell paper={p} />
               </td>
             </tr>
           ))}
@@ -427,12 +555,17 @@ function AuthorRow({
                       className="border-t border-[var(--color-border)]"
                     >
                       <td className="px-2 py-1.5 align-top text-[var(--color-fg)]">
-                        {p.title ?? "—"}
-                        {p.doi ? (
-                          <div className="mt-0.5 font-mono text-[10px] text-[var(--color-fg-subtle)]">
-                            {p.doi}
+                        <div className="flex items-start gap-1.5">
+                          <div className="flex-1">
+                            {p.title ?? "—"}
+                            {p.doi ? (
+                              <div className="mt-0.5 font-mono text-[10px] text-[var(--color-fg-subtle)]">
+                                {p.doi}
+                              </div>
+                            ) : null}
                           </div>
-                        ) : null}
+                          <VenueBadge type={p.venue_type} size="xs" />
+                        </div>
                       </td>
                       <td className="px-2 py-1.5 align-top text-[var(--color-fg-muted)]">
                         {p.venue_name ?? "—"}
@@ -440,17 +573,8 @@ function AuthorRow({
                       <td className="px-2 py-1.5 align-top text-right font-mono text-[var(--color-fg-muted)]">
                         {p.publication_year ?? "—"}
                       </td>
-                      <td
-                        className="px-2 py-1.5 align-top text-right font-mono text-[var(--color-fg)]"
-                        title={
-                          p.citation_count === null
-                            ? "Semantic Scholar로 검증되지 않음"
-                            : undefined
-                        }
-                      >
-                        {p.citation_count === null
-                          ? "—"
-                          : formatNumber(p.citation_count)}
+                      <td className="px-2 py-1.5 align-top text-right">
+                        <CitationCell paper={p} compact />
                       </td>
                     </tr>
                   ))}

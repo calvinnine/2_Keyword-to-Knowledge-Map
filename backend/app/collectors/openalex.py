@@ -53,6 +53,10 @@ class OpenAlexCollector(BaseCollector):
         cursor = "*"
 
         filter_parts: list[str] = [f'title_and_abstract.search:{keyword}']
+        # Require references metadata — improves citation network density and
+        # filters out papers OA hasn't fully ingested. See decision 4 in
+        # WORK_PROGRESS.md 2026-05-16.
+        filter_parts.append("has_references:true")
         if year_start and year_end:
             filter_parts.append(f"publication_year:{year_start}-{year_end}")
         elif year_start:

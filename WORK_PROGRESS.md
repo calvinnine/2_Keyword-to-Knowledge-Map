@@ -2,6 +2,86 @@
 
 ## 현재 단계
 MVP Phase 1–4 구현 완료. 프론트엔드 웹앱 배포 준비 완료.
+인용수 정밀도 정책: S2 + OA(sanity check) MAX 전략 + influential/breakdown 보조 지표 (2026-05-16).
+
+---
+
+## 세션 히스토리
+
+### [2026-05-16] 인용수 정밀도 강화 — 멀티 ID lookup + influential + journal/preprint breakdown
+
+#### 🔥 발견된 문제 (배경)
+1. S2 `DOI:<journal_doi>` 단일 lookup으로는 **arXiv preprint로만 색인된 논문 매칭 실패**:
+   - "Simple and Efficient Heterogeneous GNN" (AAAI 2023) → S2는 arXiv DOI(10.48550/arXiv.2207.02547)로 색인. AAAI DOI로 404.
+   - 결과: 진짜 233회인 논문이 우리 DB에서 NULL로 표시
+2. Google Scholar(741) vs S2(441) vs OA(378) 같은 차이가 **데이터 오염이 아니라 정상 카운팅 시점 차이**인 케이스 존재. 단순히 폐기하면 정상 데이터 손실.
+3. 서지학 전문가 검토 의견: `influentialCitationCount`와 citing-paper publicationTypes 활용 권장.
+
+#### 💡 정책 결정 (모두 사용자 합의)
+사용자와의 의사결정 매트릭스 결과 (전문가 의견 vs 우리 제안 비교 후):
+
+| 결정 | 채택 | 비고 |
+|------|------|------|
+| 최종 인용수 산출 | **MAX(S2, OA_sane)** | 자원 제약. 기술부채 기록 |
+| 시간역행 검증 | **counts_by_year 집계 sanity check** (pub_year 이전 비중 > 10%면 폐기) | 자원 제약. 기술부채 기록 |
+| Preprint 처리 | **corpus 포함 + venue 배지 + 인용 type 분해** (해석 C) | K2KM 핵심 use case |
+| `has_references:true` 필터 | **적용** | OpenAlex 검색 시 references 없는 논문 제외 |
+| `influentialCitationCount` | **수집·표시** | 전문가 권고 채택 |
+| 멀티 ID lookup | **DOI → arXiv DOI → ARXIV** 순차 시도 | 우리 발견 + 전문가 권고 |
+
+#### ✅ 구현 내용
+1. **마이그레이션 `0012_citation_quality_columns.py`** — Paper에 4개 컬럼 추가:
+   - `influential_citation_count`: S2 AI 판정 핵심 인용수
+   - `citation_by_journal`, `citation_by_preprint`: 인용한 논문 venue 타입 분포
+   - `citation_source`: 's2' | 'openalex' | NULL (헤드라인 인용수의 출처)
+2. **`models/paper.py`**: 위 컬럼 반영 + 상세 주석 (정책 근거)
+3. **`processing/citation_enrichment.py` 전면 재작성**:
+   - `_candidate_s2_ids()`: paper.doi → OA `ids.arxiv` → paper.arxiv_id 순으로 후보 ID 빌드
+   - `_oa_count_passes_sanity()`: counts_by_year 시간역행 비중 > 10%면 폐기
+   - `_classify_citations()`: citing paper publicationTypes로 journal/preprint 분류
+   - **Two-pass batching**: pass1 라이트 필드(500개/배치) → pass2 citations 필드(25개/배치). S2가 무거운 필드에 빡빡한 rate limit 거는 문제 해결
+   - **상위 50편만 breakdown 수행** (rate limit 절약, 롱테일은 비용 대비 효용 낮음)
+4. **`collectors/semantic_scholar.py`**:
+   - `get_papers_bulk_with_fields()`: 커스텀 fields 지원 + 429 retry-with-exponential-backoff (Celery 동시성 환경에서 silently 실패 방지)
+5. **`collectors/openalex.py`**: 검색 filter에 `has_references:true` 추가
+6. **`api/v1/endpoints/papers.py`**, **`schemas/paper.py`**: 새 4개 필드 반영
+7. **`lib/types/api.ts`**: `citation_source`, `influential_citation_count`, `citation_by_journal`, `citation_by_preprint` 추가
+8. **`components/jobs/JobDetail.tsx`**:
+   - `VenueBadge` 신규 컴포넌트: 저널/학회/프리프린트/도서/기타 배지 (Meridian 색상)
+   - `CitationCell` 신규 컴포넌트: 헤드라인 인용수 + 작은 글씨로 `저널 X · 프리 Y · 핵심 Z` 분해 + tooltip에 출처 정보
+   - Papers 탭 + AuthorRow 펼친 영역 모두에 적용
+
+#### 📊 검증 결과 ("graph neural network" 100편 분석)
+- citation_source 분포: **s2 127개 / openalex(fallback) 55개 / NULL 1개**
+- 가짜 5,375회 케이스: `has_references:true` 필터로 corpus에서 제외됨 (이중 차단)
+- Simple Efficient HGNN: AAAI DOI 매칭 실패 → arXiv DOI fallback으로 S2 데이터 회수 성공
+- Top 1: GNN Recommender Survey — 743 (S2), 핵심 15, 저널 712 / 프리프린트 27 (95% 저널)
+- Top 4: GNN Time Series Survey — 441 (S2), 핵심 8, 저널 419 / 프리 22
+- Shirui Pan (Griffith U): 3편 합계 **802회** — 진정한 GNN 분야 영향력 1위 부상
+
+---
+
+## 🔧 기술 부채 / 정밀도 업그레이드 대기
+
+자원·시간 제약으로 단순화한 부분. 정밀 분석 모드 또는 라이선스 확보 시점에 재논의.
+
+### 1. INTERSECTION 전략 (Scopus 급 정밀도)
+- 현재: MAX(S2, OA_sane)
+- 업그레이드: S2와 OA의 인용 LIST 교집합 (양쪽 source가 공통으로 가진 인용만 인정)
+- 비용: 200편당 수만~수십만 추가 API call
+- **재논의 시점**: WoS/Scopus 기관 라이선스 검토 시 동시에
+
+### 2. Per-citing-paper publicationType 검증
+- 현재: counts_by_year 집계로 시간역행 비율 체크
+- 업그레이드: 인용한 논문 각각의 publicationType + publicationDate 확인, preprint면 OK, 일반 출판물인데 시간역행이면 noise로 drop
+- 효과: 정상 preprint 케이스는 살리면서 알고리즘 에러는 더 정밀하게 차단
+- **재논의 시점**: 정책 보고서 등 매우 정밀한 분석 모드가 필요해질 때 별도 옵션으로
+
+### 3. Google Scholar 하이브리드 fallback
+- 현재: S2 미발견 + OA sanity fail → NULL
+- 업그레이드: 그래도 NULL인 케이스만 SerpAPI/scholarly로 GS 보강
+- 비용: $30-100/mo (유료 서비스 시) 또는 ToS 회색지대 (DIY)
+- **재논의 시점**: NULL 비율이 사용자 불만 수준이 될 때
 
 ---
 

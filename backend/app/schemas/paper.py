@@ -11,7 +11,15 @@ class PaperListItem(BaseModel):
     publication_year: int | None
     venue_name: str | None
     venue_type: str | None
-    citation_count: int | None  # null when unverified by Semantic Scholar
+    # Headline citation count. NULL when neither S2 nor OA-sane produced a value.
+    citation_count: int | None
+    # Which source produced the headline count: 's2' | 'openalex' | None.
+    citation_source: str | None = None
+    # S2-only: AI-classified "core" citations (Methods/Results refs).
+    influential_citation_count: int | None = None
+    # Breakdown of citing papers by venue type (from S2 citations.publicationTypes).
+    citation_by_journal: int | None = None
+    citation_by_preprint: int | None = None
     openalex_id: str | None
 
     model_config = {"from_attributes": True}

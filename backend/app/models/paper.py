@@ -39,11 +39,36 @@ class Paper(Base):
     # WoS classification: SCIE / SSCI / AHCI / ESCI — populated by ISSN lookup against wos_journals table
     sci_classification: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
 
-    # Citation count — sourced from Semantic Scholar (NOT OpenAlex; OA had data-integrity
-    # issues such as citation counts merged across unrelated works). `None` indicates
-    # the count could not be verified via S2 (paper not in S2, no DOI, or API miss).
-    # See WORK_PROGRESS.md 2026-05-16 for rationale.
+    # Citation count — main display number. Sourced via tiered policy:
+    #   1) Semantic Scholar (multi-ID lookup: DOI → arXiv DOI → CorpusId)
+    #   2) OpenAlex if S2 missing AND OA passes counts_by_year sanity check
+    #   3) NULL when neither source produces a verifiable number.
+    # When both S2 and OA-sane values exist, we take MAX(S2, OA) — both sources
+    # tend to undercount vs Google Scholar; max is closer to the "real" number.
+    # See WORK_PROGRESS.md 2026-05-16 for full rationale.
     citation_count: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+
+    # S2 "influential citations" — AI-judged core citations (Methods/Results refs),
+    # excluding mere mentions. Typically 5-15% of citation_count. Quality signal.
+    influential_citation_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    # Breakdown of citing papers by venue type (from S2 citations.publicationTypes).
+    # journal: peer-reviewed (JournalArticle, Conference, Review)
+    # preprint: arXiv/bioRxiv/etc (Preprint, or no type info)
+    # Sum may be less than citation_count when S2's citation list is truncated
+    # for very high-citation papers.
+    citation_by_journal: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+    citation_by_preprint: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    # Where the headline citation_count came from: 's2' | 'openalex' | None.
+    citation_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     reference_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # External identifiers

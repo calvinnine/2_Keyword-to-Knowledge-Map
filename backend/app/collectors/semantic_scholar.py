@@ -9,7 +9,7 @@ from collections.abc import Generator
 from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.collectors.base import BaseCollector
 from app.config import settings
@@ -118,18 +118,44 @@ class SemanticScholarCollector(BaseCollector):
 
     def get_papers_bulk(self, paper_ids: list[str]) -> list[dict]:
         """Fetch up to 500 papers by S2 paperIds in a single POST."""
+        return self.get_papers_bulk_with_fields(paper_ids, _PAPER_FIELDS)
+
+    def get_papers_bulk_with_fields(
+        self, paper_ids: list[str], fields: str
+    ) -> list[dict]:
+        """Fetch up to 500 papers in batch with custom `fields` selection.
+
+        Used by citation_enrichment to request `citations.publicationTypes`
+        without paying the cost of the full paper payload. Retries on 429
+        (rate limit) so Celery worker concurrency doesn't silently miss data.
+        """
         if not paper_ids:
             return []
-        try:
+
+        @retry(
+            stop=stop_after_attempt(5),
+            wait=wait_exponential(multiplier=2, min=4, max=60),
+            retry=retry_if_exception_type(httpx.HTTPStatusError),
+            reraise=False,
+        )
+        def _do_fetch() -> list[dict]:
             resp = self._client.post(
                 "/paper/batch",
                 json={"ids": paper_ids[:500]},
-                params={"fields": _PAPER_FIELDS},
+                params={"fields": fields},
             )
+            if resp.status_code == 429:
+                # Surface to tenacity so it backs off and retries.
+                raise httpx.HTTPStatusError(
+                    "S2 429 rate limit", request=resp.request, response=resp
+                )
             resp.raise_for_status()
             return resp.json()
-        except httpx.HTTPStatusError as exc:
-            logger.warning("S2 bulk fetch failed: %s", exc)
+
+        try:
+            return _do_fetch()
+        except Exception as exc:
+            logger.warning("S2 bulk fetch gave up after retries: %s", exc)
             return []
 
     # ------------------------------------------------------------------
