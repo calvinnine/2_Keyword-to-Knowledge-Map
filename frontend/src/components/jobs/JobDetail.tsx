@@ -289,6 +289,9 @@ function AuthorsPanel({ jobId, disabled }: { jobId: string; disabled: boolean })
     enabled: !disabled,
   });
 
+  // Single-expand accordion: only one author's paper list is shown at a time.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   if (disabled)
     return <EmptyPanel text="분석이 완료되면 상위 저자가 표시됩니다." />;
   if (q.isLoading) return <LoadingPanel />;
@@ -306,8 +309,6 @@ function AuthorsPanel({ jobId, disabled }: { jobId: string; disabled: boolean })
         </thead>
         <tbody>
           {q.data.map((a) => {
-            // Prefer normalised institution name; fall back to raw affiliation.
-            // raw_affiliation can be long; trim to ~80 chars for readability.
             const affLabel =
               a.latest_institution_name ??
               (a.latest_raw_affiliation
@@ -315,38 +316,151 @@ function AuthorsPanel({ jobId, disabled }: { jobId: string; disabled: boolean })
                   ? a.latest_raw_affiliation.slice(0, 77) + "…"
                   : a.latest_raw_affiliation
                 : null);
+            const isExpanded = expandedId === a.id;
             return (
-              <tr
+              <AuthorRow
                 key={a.id}
-                className="border-b border-[var(--color-border)] last:border-0"
-              >
-                <td className="px-5 py-2.5">
-                  <div className="font-medium text-[var(--color-fg)]">{a.name}</div>
-                  {affLabel ? (
-                    <div
-                      className="mt-0.5 text-xs text-[var(--color-fg-muted)]"
-                      title={a.latest_raw_affiliation ?? undefined}
-                    >
-                      {affLabel}
-                    </div>
-                  ) : (
-                    <div className="mt-0.5 text-xs text-[var(--color-fg-subtle)]">
-                      소속 정보 없음
-                    </div>
-                  )}
-                </td>
-                <td className="px-5 py-2.5 text-right font-mono align-top">
-                  {formatNumber(a.paper_count)}
-                </td>
-                <td className="px-5 py-2.5 text-right font-mono align-top">
-                  {formatNumber(a.citation_count)}
-                </td>
-              </tr>
+                jobId={jobId}
+                author={a}
+                affLabel={affLabel}
+                isExpanded={isExpanded}
+                onToggle={() => setExpandedId(isExpanded ? null : a.id)}
+              />
             );
           })}
         </tbody>
       </table>
     </Card>
+  );
+}
+
+function AuthorRow({
+  jobId,
+  author,
+  affLabel,
+  isExpanded,
+  onToggle,
+}: {
+  jobId: string;
+  author: import("@/lib/types/api").AuthorListItem;
+  affLabel: string | null;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  // Lazy-load papers only when expanded (and cache via React Query).
+  const papersQ = useQuery({
+    queryKey: ["author-papers", jobId, author.id],
+    queryFn: () => papersApi.listForJob(jobId, 100, 0, author.id),
+    enabled: isExpanded,
+  });
+
+  return (
+    <>
+      <tr
+        className={
+          "border-b border-[var(--color-border)] cursor-pointer transition-colors hover:bg-[var(--color-surface-2)] " +
+          (isExpanded ? "bg-[var(--color-surface-2)]" : "")
+        }
+        onClick={onToggle}
+        aria-expanded={isExpanded}
+      >
+        <td className="px-5 py-2.5">
+          <div className="flex items-center gap-2">
+            <span
+              className={
+                "inline-block text-[var(--color-fg-subtle)] transition-transform " +
+                (isExpanded ? "rotate-90" : "")
+              }
+              aria-hidden
+            >
+              ▸
+            </span>
+            <div>
+              <div className="font-medium text-[var(--color-fg)]">{author.name}</div>
+              {affLabel ? (
+                <div
+                  className="mt-0.5 text-xs text-[var(--color-fg-muted)]"
+                  title={author.latest_raw_affiliation ?? undefined}
+                >
+                  {affLabel}
+                </div>
+              ) : (
+                <div className="mt-0.5 text-xs text-[var(--color-fg-subtle)]">
+                  소속 정보 없음
+                </div>
+              )}
+            </div>
+          </div>
+        </td>
+        <td className="px-5 py-2.5 text-right font-mono align-top">
+          {formatNumber(author.paper_count)}
+        </td>
+        <td className="px-5 py-2.5 text-right font-mono align-top">
+          {formatNumber(author.citation_count)}
+        </td>
+      </tr>
+      {isExpanded ? (
+        <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)]">
+          <td colSpan={3} className="px-5 py-3">
+            {papersQ.isLoading ? (
+              <div className="text-xs text-[var(--color-fg-muted)]">
+                논문 불러오는 중…
+              </div>
+            ) : !papersQ.data?.length ? (
+              <div className="text-xs text-[var(--color-fg-muted)]">
+                관련 논문이 없습니다.
+              </div>
+            ) : (
+              <table className="w-full text-xs">
+                <thead className="text-[var(--color-fg-subtle)]">
+                  <tr>
+                    <th className="px-2 py-1 text-left font-medium">제목</th>
+                    <th className="px-2 py-1 text-left font-medium">저널</th>
+                    <th className="px-2 py-1 text-right font-medium w-16">연도</th>
+                    <th className="px-2 py-1 text-right font-medium w-20">인용</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {papersQ.data.map((p) => (
+                    <tr
+                      key={p.id}
+                      className="border-t border-[var(--color-border)]"
+                    >
+                      <td className="px-2 py-1.5 align-top text-[var(--color-fg)]">
+                        {p.title ?? "—"}
+                        {p.doi ? (
+                          <div className="mt-0.5 font-mono text-[10px] text-[var(--color-fg-subtle)]">
+                            {p.doi}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-2 py-1.5 align-top text-[var(--color-fg-muted)]">
+                        {p.venue_name ?? "—"}
+                      </td>
+                      <td className="px-2 py-1.5 align-top text-right font-mono text-[var(--color-fg-muted)]">
+                        {p.publication_year ?? "—"}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 align-top text-right font-mono text-[var(--color-fg)]"
+                        title={
+                          p.citation_count === null
+                            ? "Semantic Scholar로 검증되지 않음"
+                            : undefined
+                        }
+                      >
+                        {p.citation_count === null
+                          ? "—"
+                          : formatNumber(p.citation_count)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </td>
+        </tr>
+      ) : null}
+    </>
   );
 }
 

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.paper import Paper
+from app.models.paper import Paper, PaperAuthor
 from app.schemas.paper import PaperListItem, PaperRead
 
 router = APIRouter()
@@ -16,12 +16,18 @@ def list_papers_for_job(
     job_id: uuid.UUID,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    author_id: uuid.UUID | None = Query(
+        None, description="Filter to papers authored by this author within the job"
+    ),
     db: Session = Depends(get_db),
 ) -> list[Paper]:
+    stmt = select(Paper).where(Paper.job_id == job_id)
+    if author_id is not None:
+        stmt = stmt.join(PaperAuthor, PaperAuthor.paper_id == Paper.id).where(
+            PaperAuthor.author_id == author_id
+        )
     stmt = (
-        select(Paper)
-        .where(Paper.job_id == job_id)
-        .order_by(Paper.citation_count.desc().nullslast())
+        stmt.order_by(Paper.citation_count.desc().nullslast())
         .limit(limit)
         .offset(offset)
     )

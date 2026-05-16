@@ -44,3 +44,7 @@ frontend/.env.local
 frontend/.env*.local
 frontend/next-env.d.ts
 frontend/tsconfig.tsbuildinfo
+
+# Backups/archives in repo root
+*.zip
+아카이브.zip

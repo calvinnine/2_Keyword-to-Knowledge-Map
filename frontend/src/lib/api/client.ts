@@ -107,10 +107,18 @@ export const jobsApi = {
 // ---------------------------------------------------------------------------
 
 export const papersApi = {
-  listForJob: (jobId: string, limit = 100, offset = 0) =>
-    request<PaperListItem[]>(
-      `/api/v1/jobs/${jobId}/papers?limit=${limit}&offset=${offset}`
-    ),
+  listForJob: (
+    jobId: string,
+    limit = 100,
+    offset = 0,
+    authorId?: string,
+  ) => {
+    const q = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (authorId) q.set("author_id", authorId);
+    return request<PaperListItem[]>(
+      `/api/v1/jobs/${jobId}/papers?${q.toString()}`
+    );
+  },
   get: (paperId: string) => request<PaperRead>(`/api/v1/papers/${paperId}`),
 };
 
