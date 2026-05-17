@@ -13,6 +13,8 @@ from app.schemas.job import (
     JobFromQuery,
     JobListItem,
     JobRead,
+    KeywordExpansionRead,
+    KeywordExpansionRequest,
     ParsedQueryRead,
 )
 
@@ -34,17 +36,97 @@ def _enqueue_pipeline_for_job(db: Session, job: AnalysisJob) -> None:
         db.refresh(job)
 
 
+@router.post(
+    "/expand-keywords",
+    response_model=KeywordExpansionRead,
+    summary="Preview expanded search terms without creating a job",
+)
+def expand_keywords_preview(payload: KeywordExpansionRequest) -> KeywordExpansionRead:
+    """Translate (if Korean) and expand a keyword into candidate search terms.
+
+    Three layers:
+      1. LLM translate+expand (Groq llama-3.3-70b) — single call, domain-aware
+      2. OpenAlex concept autocomplete — validates each LLM candidate actually
+         exists in the academic index (catches hallucinations / outdated translations)
+      3. Wikipedia interlanguage link (ko → en) — for Hangul input only, adds
+         the curated English title as an extra candidate when LLM may not know
+         the latest term.
+    """
+    from app.nlp.query_expansion import translate_and_expand
+    from app.nlp.grounding import (
+        validate_terms_bulk,
+        validate_term_with_oa,
+        lookup_wiki_langlink,
+    )
+    from app.schemas.job import TermInfo as TermInfoSchema
+
+    original = payload.keyword
+    result = translate_and_expand(original)
+    terms: list[str] = list(result["search_terms"])
+
+    # Layer 2: OA validation for every LLM-proposed term (parallel)
+    oa_meta = validate_terms_bulk(terms)
+    term_info: dict[str, TermInfoSchema] = {
+        t: TermInfoSchema(
+            oa_works_count=v.get("oa_works_count"),
+            source="llm",
+        )
+        for t, v in oa_meta.items()
+    }
+
+    # Layer 3: Wikipedia ko→en for Korean input. Adds bonus candidate.
+    if contains_hangul(original):
+        wiki_eng = lookup_wiki_langlink(original)
+        if wiki_eng:
+            # Skip if LLM already proposed an equivalent (case-insensitive)
+            existing_lower = {t.lower() for t in terms}
+            if wiki_eng.lower() not in existing_lower:
+                terms.append(wiki_eng)
+                # Validate the wiki term against OA too
+                wiki_oa = validate_term_with_oa(wiki_eng)
+                term_info[wiki_eng] = TermInfoSchema(
+                    oa_works_count=wiki_oa.get("oa_works_count") if wiki_oa else None,
+                    source="wikipedia",
+                )
+
+    return KeywordExpansionRead(
+        original_keyword=original,
+        translated_keyword=result["translated"],
+        search_terms=terms,
+        term_info=term_info,
+    )
+
+
 @router.post("", response_model=JobRead, status_code=status.HTTP_201_CREATED)
 def create_job(payload: JobCreate, db: Session = Depends(get_db)) -> AnalysisJob:
     """Create an analysis job and enqueue the pipeline asynchronously."""
-    # Auto-translate Korean keywords → English so OpenAlex / S2 can find papers.
-    keyword = payload.keyword
-    params: dict | None = None
-    if contains_hangul(keyword):
-        translated = translate_keyword_to_english(keyword)
-        if translated and translated != keyword:
-            params = {"original_keyword": keyword, "translated_from": "ko"}
-            keyword = translated
+    from app.nlp.query_expansion import translate_and_expand
+
+    # Determine search terms: prefer caller-supplied (pre-confirmed by user),
+    # otherwise call the combined translate+expand LLM.
+    original_keyword = payload.keyword
+    params: dict = {}
+
+    if payload.search_terms and len(payload.search_terms) > 0:
+        # User already confirmed terms via /expand-keywords. Use the first
+        # term as the primary `keyword` for downstream metadata.
+        search_terms = payload.search_terms
+        keyword = search_terms[0]
+        if contains_hangul(original_keyword):
+            params["original_keyword"] = original_keyword
+            params["translated_from"] = "ko"
+    else:
+        # Inline expansion (e.g. API called without UI confirmation step)
+        result = translate_and_expand(original_keyword)
+        search_terms = result["search_terms"]
+        keyword = (
+            result["translated"] or search_terms[0] if search_terms else original_keyword
+        )
+        if result["translated"]:
+            params["original_keyword"] = original_keyword
+            params["translated_from"] = "ko"
+
+    params["search_terms"] = search_terms
 
     job = AnalysisJob(
         keyword=keyword,
@@ -53,7 +135,7 @@ def create_job(payload: JobCreate, db: Session = Depends(get_db)) -> AnalysisJob
         year_end=payload.year_end,
         publication_types=payload.publication_types,
         publication_scope=payload.publication_scope,
-        params=params,
+        params=params or None,
         status=JobStatus.PENDING,
     )
     db.add(job)
@@ -108,6 +190,8 @@ def create_job_from_query(
     detected intent are preserved on `AnalysisJob.params` so downstream views
     can highlight the relevant graph (author / paper / keyword).
     """
+    from app.nlp.query_expansion import translate_and_expand
+
     parsed = HeuristicQueryParser().parse(payload.query)
     if not parsed.keyword:
         raise HTTPException(
@@ -115,18 +199,31 @@ def create_job_from_query(
             detail="Could not extract a keyword from the query",
         )
 
-    # Auto-translate Korean keywords → English for OpenAlex / S2.
-    keyword = parsed.keyword
     extra_params = parsed.to_params()
-    if contains_hangul(keyword):
-        translated = translate_keyword_to_english(keyword)
-        if translated and translated != keyword:
-            extra_params = {
-                **extra_params,
-                "original_keyword": keyword,
-                "translated_from": "ko",
-            }
-            keyword = translated
+    original_keyword = parsed.keyword
+
+    # Two paths:
+    #   1) Caller supplied pre-confirmed search_terms (via UI preview step).
+    #      Use first term as primary `keyword`, skip LLM expansion.
+    #   2) No search_terms → run translate+expand on the parsed keyword so
+    #      the natural-language path matches the keyword-input path.
+    if payload.search_terms and len(payload.search_terms) > 0:
+        search_terms = payload.search_terms
+        keyword = search_terms[0]
+        if contains_hangul(original_keyword):
+            extra_params["original_keyword"] = original_keyword
+            extra_params["translated_from"] = "ko"
+    else:
+        result = translate_and_expand(original_keyword)
+        search_terms = result["search_terms"]
+        keyword = (
+            result["translated"] or (search_terms[0] if search_terms else original_keyword)
+        )
+        if result["translated"]:
+            extra_params["original_keyword"] = original_keyword
+            extra_params["translated_from"] = "ko"
+
+    extra_params["search_terms"] = search_terms
 
     job = AnalysisJob(
         keyword=keyword,

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -70,8 +70,10 @@ class AuthorAffiliation(Base):
         nullable=True,
         index=True,
     )
-    # Raw affiliation string from source
-    raw_affiliation: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # Raw affiliation string from source. OpenAlex occasionally returns very
+    # long multi-line affiliations, so this is TEXT (no length cap). See
+    # migration 0013_widen_raw_affiliation.
+    raw_affiliation: Mapped[str | None] = mapped_column(Text(), nullable=True)
     # ISO 3166-1 alpha-2
     country_code: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     country_name: Mapped[str | None] = mapped_column(String(200), nullable=True)

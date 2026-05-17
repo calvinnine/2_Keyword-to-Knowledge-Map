@@ -163,8 +163,11 @@ class SemanticScholarCollector(BaseCollector):
     # ------------------------------------------------------------------
 
     @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=2, max=30),
+        # S2 free tier rate limit (~1 req/s) can stall for 30-60s under load,
+        # especially when multiple jobs / multi-keyword expansion hits in parallel.
+        # 7 attempts × exp backoff (4 → 60s) gives ~3 min total before giving up.
+        stop=stop_after_attempt(7),
+        wait=wait_exponential(multiplier=2, min=4, max=60),
         reraise=True,
     )
     def _fetch_page(

@@ -17,6 +17,7 @@ import type {
   JobListItem,
   JobRead,
   JobStatus,
+  KeywordExpansionResult,
   KeywordRead,
   NtisOverlayTriggerResponse,
   NtisOverview,
@@ -96,6 +97,12 @@ export const jobsApi = {
     request<ParsedQuery>(`/api/v1/jobs/parse-query`, {
       method: "POST",
       body: JSON.stringify(payload),
+    }),
+
+  expandKeywords: (keyword: string) =>
+    request<KeywordExpansionResult>(`/api/v1/jobs/expand-keywords`, {
+      method: "POST",
+      body: JSON.stringify({ keyword }),
     }),
 
   cancel: (jobId: string) =>

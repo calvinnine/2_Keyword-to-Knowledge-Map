@@ -29,6 +29,19 @@ from app.processing.affiliation import extract_openalex_affiliation, extract_s2_
 logger = logging.getLogger(__name__)
 
 
+def _clip(text: str | None, max_len: int) -> str | None:
+    """Truncate a string to *max_len* chars, defensively guarding the DB
+    against overly long values (OpenAlex / S2 occasionally return
+    multi-line affiliation strings hundreds of chars long).
+    Returns None unchanged.
+    """
+    if text is None:
+        return None
+    if not isinstance(text, str):
+        text = str(text)
+    return text if len(text) <= max_len else text[:max_len]
+
+
 class IngestionService:
     """Stateful ingestion service for one job run.
 
@@ -122,9 +135,9 @@ class IngestionService:
                         author_id=author_id,
                         institution_id=inst_id,
                         paper_id=paper.id,
-                        raw_affiliation=aff.get("raw_affiliation"),
-                        country_code=aff.get("country_code"),
-                        country_name=aff.get("country_name"),
+                        raw_affiliation=_clip(aff.get("raw_affiliation"), 4000),
+                        country_code=_clip(aff.get("country_code"), 10),
+                        country_name=_clip(aff.get("country_name"), 200),
                     ))
 
         # Keywords — deduplicate across all sources (OpenAlex + S2 may share same paper)
@@ -208,7 +221,7 @@ class IngestionService:
                     self._db.add(AuthorAffiliation(
                         author_id=author_id,
                         paper_id=paper.id,
-                        raw_affiliation=aff.get("raw_affiliation"),
+                        raw_affiliation=_clip(aff.get("raw_affiliation"), 4000),
                         country_code=None,
                         country_name=None,
                     ))

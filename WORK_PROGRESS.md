@@ -3,10 +3,89 @@
 ## 현재 단계
 MVP Phase 1–4 구현 완료. 프론트엔드 웹앱 배포 준비 완료.
 인용수 정밀도 정책: S2 + OA(sanity check) MAX 전략 + influential/breakdown 보조 지표 (2026-05-16).
+검색어 확장(translate+expand+OA/Wiki 그라운딩) + 사용자 확인 패널 + 파이프라인 idempotency 강화 (2026-05-17).
+로드맵 확정: Sprint 1~4 (S1 빠른 정리 → S2 그래프 의미 부여 ⭐ → S3 키워드 토픽 시각화 → S4 속도 최적화).
 
 ---
 
 ## 세션 히스토리
+
+### [2026-05-17] 검색어 확장 미리보기 + 그라운딩 + 파이프라인 idempotency + UX 버그 수정
+
+#### ✅ 검색어 확장 + 사용자 확인 플로우
+- **`nlp/query_expansion.py`**: 번역과 확장을 **단일 LLM 호출**로 통합 (`translate_and_expand`)
+  - 모델 변경: `llama-3.1-8b-instant` → `llama-3.3-70b-versatile` (한국어 학술 용어 정확도 ↑)
+  - 도메인 컨텍스트 추론: "큐빗 생성"이 "cubic creation"으로 가지 않고 "qubit generation"으로 정확히 해석
+  - JSON 모드 강제 (`response_format={"type": "json_object"}`) → 파싱 안정성
+- **새 API endpoint**: `POST /api/v1/jobs/expand-keywords` (잡 생성 없이 검색어 미리보기)
+- **`KeywordExpansionPanel.tsx`** (신규): 체크박스로 후보 편집 + 직접 추가 + OA 검증 배지
+- **`JobCreateForm.tsx`**: 두 모드(키워드 / 자연어) 동일 플로우 — 미리보기 → 확정 → 잡 생성
+- **`JobCreate` / `JobFromQuery` 스키마**: `search_terms` 필드 추가 (사용자 확정 검색어)
+- **`collect.py`**: multi-keyword 병렬 검색 + source_id 기반 in-run dedup. OA 전체, S2는 top-2만 (rate limit 보호).
+
+#### ✅ 번역 그라운딩 (OA + Wikipedia)
+LLM 컷오프(2024 중반) 한계로 신생 용어/오역 가능 → 외부 데이터로 그라운딩.
+
+- **`nlp/grounding.py`** (신규):
+  - `validate_term_with_oa(term)`: OA `/works?filter=title_and_abstract.search:"<phrase>"&per-page=1`로 **exact-phrase 카운트** 반환 (autocomplete/concepts는 2023 freeze라 신생 분야 누락)
+  - `lookup_wiki_langlink(korean_term)`: ko-wiki → en-wiki 언어간 링크 추출
+  - `validate_terms_bulk`: ThreadPoolExecutor로 병렬 (concurrency=3, retry=1)
+- **`schemas/job.py`**: `TermInfo { oa_works_count, source }` 추가; `KeywordExpansionRead.term_info: dict[str, TermInfo]`
+- **Frontend `KeywordExpansionPanel`**: 후보별 배지
+  - `OA 16K` (강조 색): 1000+건 → 권장
+  - `OA 100` (중성): 100~999 → 사용 가능
+  - `OA 17` (위험 색): <100 → 빈약
+  - `위키`: Wikipedia 언어간 링크 출신
+- **검증 결과**:
+  - "에이전틱 AI" → Wikipedia가 `AI agent` (16K) 추가 — LLM 단독으로는 약한 신생 용어 보완 ✅
+  - "테스트 타임 컴퓨팅" → 모든 후보 0~5K 정직 노출 → 사용자가 정확한 용어 직접 추가 가능 ✅
+  - 응답 시간: 4~18s (LLM 3-5s + OA validation 6~13s parallel)
+
+#### ✅ 스테퍼 UI 개선
+- **`JobProgressStepper.tsx`**:
+  - 단계별 한 줄 상태 설명 (수집: "OpenAlex · Semantic Scholar에서 논문 수집 중 (3개 검색어 병렬) — 247편 확보")
+  - 수집 단계에서 사용된 search_terms를 작은 배지로 표시
+  - "자동 새로고침됩니다" 안내
+
+#### 🐛 버그 수정
+
+##### 1. Celery 태스크 중복 실행 → 정규화 UniqueViolation
+- **증상**: `papers_collected=7,466` 후 정규화에서 `duplicate key (doi, job_id)` 실패. DB 조사 결과 RawPayload가 **정확히 2배**로 들어가 있었음 (12,993 rows, 6,506 distinct source_ids).
+- **원인**: `task_acks_late=True` + `task_max_retries=3` → 일시적 실패(S2 429, 워커 시그널 등)에 같은 메시지 재배달.
+- **수정**:
+  - `celery_app.py`: `task_acks_late=False`, `task_max_retries=0` (자동 재시도 비활성화)
+  - `collect.py` / `process.py`: 태스크 시작 시 자신의 `job_id`로 된 데이터 자체 삭제 (idempotent: 재실행해도 같은 결과)
+  - S2 retry: 5회 → 7회, backoff 2~30s → 4~60s (~3분 한계)
+  - S2 실패가 잡 전체를 죽이지 않도록 try/except — OA만으로 진행 가능, `params.s2_collection_skipped`에 사유 기록
+
+##### 2. `raw_affiliation` 길이 초과 (StringDataRightTruncation)
+- **증상**: OA가 가끔 1000자 초과 다중 affiliation 문자열 반환 → `varchar(1000)` 초과 INSERT 실패.
+- **수정**:
+  - 마이그레이션 `0013_widen_raw_affiliation`: `varchar(1000)` → `text` (길이 제한 없음)
+  - `models/author.py`: `String(1000)` → `Text()`로 동기화
+  - `ingestion.py`: `_clip(text, max_len)` 헬퍼 — affiliation 4000 / country_code 10 / country_name 200 방어적 절단
+
+##### 3. UX: "최대 논문 수" 입력에서 "0" 잠김
+- **원인**: `Number("") || 0`이 빈 입력을 0으로 변환 → input에 "0" 고정 표시.
+- **수정**: `maxPapers` 상태를 `number` → `string`으로 변경 (연도 필드와 동일 패턴). 제출 시점에 파싱, 빈 값/100 미만이면 기본값 20,000으로 폴백.
+
+#### 🧪 End-to-end 테스트 (실제 잡 2건 통과)
+- **잡 1** (키워드 모드, 양자 컴퓨팅, max 500): 1,468 raw → 1,366 papers → 그래프 3개. 중복 0건.
+- **잡 2** (NL 모드, "최근 5년 그래프 신경망 누가 잘해?", max 200): 1,079 raw → 964 papers → 그래프 3개. intent/original_query/search_terms 모두 params에 보존됨.
+
+#### 🗺️ 로드맵 확정 (사용자 승인)
+사용자 요청 7건 분석 후 4개 스프린트로 정렬:
+
+| Sprint | 내용 | 예상 |
+|--------|------|------|
+| **S1** | "#0000" 제거 / 노드 거리 튜닝 / 한국인·한국기관 필터 | 반나절 |
+| **S2** ⭐ | Centrality 뷰 모드 (백엔드 이미 계산됨, 프론트 노출) + Top-N LLM 자동 해설 | 3~4일 |
+| **S3** | 키워드 topic 그룹화 + bubble/treemap 시각화 | 2~3일 |
+| **S4** | 수집/정규화 속도 (프로파일링 선행, OA 병렬 / bulk INSERT 등) | 2~4일 |
+
+핵심 판단: 4.3(centrality 뷰)은 `analysis/centrality.py`가 이미 4종 모두 GraphNode에 저장 중이라 거의 프론트 작업만 필요. 4.4가 사용자 영혼의 요구("그림이 아니라 의미").
+
+---
 
 ### [2026-05-16] 인용수 정밀도 강화 — 멀티 ID lookup + influential + journal/preprint breakdown
 
@@ -82,6 +161,68 @@ MVP Phase 1–4 구현 완료. 프론트엔드 웹앱 배포 준비 완료.
 - 업그레이드: 그래도 NULL인 케이스만 SerpAPI/scholarly로 GS 보강
 - 비용: $30-100/mo (유료 서비스 시) 또는 ToS 회색지대 (DIY)
 - **재논의 시점**: NULL 비율이 사용자 불만 수준이 될 때
+
+---
+
+## 🗺️ 향후 로드맵 (2026-05-17 검토 · 우선순위 확정)
+
+사용자가 제안한 UX/기능 개선 7건을 4개 스프린트로 묶음. 비용 정렬은 "백엔드 0 → 의미 부여 → 키워드 탭 → 인프라" 순서.
+
+### Sprint 1 — 빠른 정리 (반나절)
+사용자에게 즉시 보이는 작은 가시 개선. 의존성 없음, 위험 낮음.
+
+- **[그래프] "#0000" 형식 선택 제거** — 공간만 차지하고 의미 없음. UI 1줄 삭제. (~10분)
+- **[그래프] 노드 간 거리 조정** — graphology forceAtlas2 파라미터 튜닝 (`scalingRatio`, `gravity`, `edgeWeightInfluence`). (~30분~1시간)
+- **[저자] 한국인 / 한국기관 필터** — `Author.primary_country_code`와 `AuthorAffiliation.country_code='KR'`을 이용. API에 `country=KR` 쿼리 파라미터 + 필터 칩 2개. **데이터는 이미 수집 중**. (~1~2시간)
+
+### Sprint 2 — 그래프 탭에 의미 부여 (3~4일) ⭐ 최우선
+사용자 핵심 요구: *"그림만 보는 건 의미 없어. 누가/무슨 키워드가/어떤 논문이 중요한 역할을 하는지 그 의미를 파악할 수 있어야 해."*
+
+**관찰**: backend/analysis/centrality.py가 이미 degree·betweenness·closeness·eigenvector centrality + community 클러스터링을 `GraphNode`에 저장하고 있음. 즉 4.3은 거의 **순수 프론트 작업**.
+
+#### 2.1 Centrality 기준 뷰 (1~2일)
+- 각 centrality 의미를 UI로 살림:
+  - **(weighted) Degree**: 활동량 / 직접 연결 강도 → "허브" 노드
+  - **Betweenness**: 서로 다른 클러스터를 잇는 다리 → "중개자"
+  - **Closeness**: 전체 네트워크에서의 접근성 → "허리 인물"
+  - **Eigenvector**: 영향력 있는 노드와의 연결 → "추천 받는 사람"
+- 뷰 모드 셀렉터로 metric 전환 → 노드 size · color · 정렬에 반영
+- 상단에 Top-10 표(각 metric별 ranked list) 패널 추가
+- 한 노드 클릭 시 "이 사람의 centrality 프로파일" 카드: 4개 metric 점수 + 분위 + 짧은 해설
+
+#### 2.2 Top-N 자동 해설 (1~2일, 2.1 후행)
+- LLM (Groq 재사용)으로 그래프 narrative 생성:
+  - "이 네트워크에서 X는 betweenness 1위로 quantum-info와 ML-theory 두 커뮤니티를 잇는 다리 역할"
+  - "키워드 Y는 eigenvector 1위 — 가장 영향력 있는 논문/저자들과 같이 등장"
+- 그래프 탭 상단에 `📍 이 그래프에서 중요한 것` 패널 (3~5개 bullet point)
+- 비용: 잡당 LLM 호출 1회 추가, 무시할 수준
+
+### Sprint 3 — 키워드 탭 시각화 (2~3일)
+사용자 제안: *"키워드를 topic modelling으로 3-4가지 topic group으로 묶어서 보여주고, 그 안에서 세부 키워드들을 볼 수 있도록"*
+
+- **기본 정렬**: 중요도 내림차순 (현재 paper_count, TF-IDF 가중도 고려)
+- **Topic 그룹화**:
+  - 옵션 A: 기존 `analysis/clustering.py`의 community detection 결과를 keyword graph에도 적용 (가장 빠름)
+  - 옵션 B: 키워드 임베딩(sentence-transformer 이미 사용 중) → KMeans/HDBSCAN으로 3~5 클러스터 → LLM에 클러스터별 라벨링 요청
+- **시각화 선택지** (디자인 결정 필요):
+  - Bubble chart (cluster=색, size=중요도) — 한눈에 보이지만 작은 키워드는 묻힘
+  - Treemap (계층적, cluster→keyword) — 공간 활용 효율 ↑
+  - Sunburst — 클러스터→서브토픽→키워드 3단 계층 표현
+- 의존성: 옵션 B 채택 시 scikit-learn 추가 (이미 numpy/scipy는 있음)
+
+### Sprint 4 — 수집/정규화 속도 (2~4일, 독립)
+사용자 우려: *"속도가 느림"*. 단, 추측 기반 최적화는 위험 → **프로파일링 선행**.
+
+#### 4.1 측정 (반나절)
+- collect / process / analyze 각 단계의 wall-clock을 잡 단위로 기록 (이미 일부 logging)
+- 1k / 5k / 20k 논문 시나리오별 실측
+- 병목 식별: OA 페이지네이션 vs S2 enrichment vs DB INSERT vs SciClassifier 등
+
+#### 4.2 최적화 (병목 따라 분기)
+- **OA 페이지네이션 병렬화**: cursor 기반이라 직렬화돼 있음. keyword 분할 + 동시 fetch로 ~3-5배 가능 (이미 멀티 키워드라 일부 효과)
+- **Bulk INSERT**: 현재 SQLAlchemy add+flush per row. `bulk_insert_mappings` 또는 PostgreSQL `COPY`로 RawPayload / Paper 삽입 가속 (~10배 가능)
+- **Citation enrichment 동시성 ↑**: pass2(citations.publicationTypes)가 가장 느림. 25개 배치를 동시 호출(2~3 동시)로 절반 가능
+- **인용 enrichment 스킵 기준**: citation_count < 10인 롱테일 논문은 breakdown 안 가져옴 (이미 top-50만 처리 중이라 부분적 반영됨)
 
 ---
 

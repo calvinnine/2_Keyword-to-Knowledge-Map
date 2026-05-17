@@ -67,6 +67,21 @@ export interface JobRead extends JobListItem {
   insight: string | null;
 }
 
+export interface TermInfo {
+  /** Number of OA papers containing this term as an exact phrase. */
+  oa_works_count?: number | null;
+  /** 'llm' (default) — proposed by the LLM. 'wikipedia' — from ko→en langlink. */
+  source?: "llm" | "wikipedia";
+}
+
+export interface KeywordExpansionResult {
+  original_keyword: string;
+  translated_keyword: string | null;
+  search_terms: string[];
+  /** Per-term grounding metadata keyed by the term string. Missing key = no OA match found. */
+  term_info?: Record<string, TermInfo>;
+}
+
 export interface JobCreatePayload {
   keyword: string;
   max_papers?: number;
@@ -74,6 +89,8 @@ export interface JobCreatePayload {
   year_end?: number | null;
   publication_types?: string[] | null;
   publication_scope?: string;
+  /** Pre-confirmed expanded search terms from /expand-keywords */
+  search_terms?: string[];
 }
 
 export interface JobFromQueryPayload {
@@ -83,6 +100,8 @@ export interface JobFromQueryPayload {
   year_end?: number | null;
   publication_types?: string[] | null;
   publication_scope?: string;
+  /** Pre-confirmed expanded search terms from /expand-keywords */
+  search_terms?: string[];
 }
 
 export interface ParsedQuery {

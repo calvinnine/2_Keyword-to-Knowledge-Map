@@ -31,6 +31,23 @@ def process_papers(self, job_id: str) -> dict:
         job.status = JobStatus.PROCESSING
         db.commit()
 
+        # Idempotency: wipe any papers/junctions left over from a previous
+        # attempt of this job. Without this, a retry hits the
+        # uq_papers_doi_job UNIQUE constraint on the first overlapping DOI.
+        # FK-safe delete order.
+        from sqlalchemy import text as _sql_text
+        for sql in [
+            "DELETE FROM paper_keywords WHERE paper_id IN (SELECT id FROM papers WHERE job_id=:j)",
+            "DELETE FROM paper_authors WHERE paper_id IN (SELECT id FROM papers WHERE job_id=:j)",
+            "DELETE FROM paper_sources WHERE paper_id IN (SELECT id FROM papers WHERE job_id=:j)",
+            "DELETE FROM author_affiliations WHERE paper_id IN (SELECT id FROM papers WHERE job_id=:j)",
+            "DELETE FROM papers WHERE job_id=:j",
+        ]:
+            r = db.execute(_sql_text(sql), {"j": str(job_uuid)})
+            if r.rowcount:
+                logger.info("process_papers cleanup: %d rows from %s", r.rowcount, sql.split()[2])
+        db.commit()
+
         service = IngestionService(db, job_uuid)
         processed = 0
         deduped = 0

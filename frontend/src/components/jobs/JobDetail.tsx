@@ -129,6 +129,11 @@ export function JobDetail({ jobId }: { jobId: string }) {
           status={j.status}
           papers_collected={j.papers_collected}
           papers_processed={j.papers_processed}
+          search_terms={
+            Array.isArray(j.params?.search_terms)
+              ? (j.params!.search_terms as string[])
+              : []
+          }
         />
         <CardBody className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-5">
           <Stat label="최대 논문" value={formatNumber(j.max_papers)} />

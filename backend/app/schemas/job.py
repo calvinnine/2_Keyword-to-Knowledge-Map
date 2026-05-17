@@ -25,6 +25,27 @@ def _validate_scope(value: str) -> None:
         raise ValueError("'all' cannot be combined with other scope values")
 
 
+class KeywordExpansionRequest(BaseModel):
+    keyword: str = Field(..., min_length=1, max_length=500)
+
+
+class TermInfo(BaseModel):
+    """Per-term grounding metadata shown in the UI as confidence badges."""
+    oa_works_count: int | None = None      # papers indexed in OA for this concept
+    canonical_name: str | None = None      # OA's display_name (may differ slightly from LLM)
+    source: str = "llm"                    # 'llm' | 'wikipedia'
+
+
+class KeywordExpansionRead(BaseModel):
+    """Returned by POST /jobs/expand-keywords before job creation."""
+    original_keyword: str
+    translated_keyword: str | None   # set when Korean was auto-translated
+    search_terms: list[str]          # ranked candidates; first = primary
+    # Optional per-term validation info, keyed by the term string.
+    # Absent key = no OA match found and not from Wikipedia.
+    term_info: dict[str, TermInfo] = Field(default_factory=dict)
+
+
 class JobCreate(BaseModel):
     keyword: str = Field(..., min_length=1, max_length=500)
     max_papers: int = Field(default=20_000, ge=100, le=50_000)
@@ -32,6 +53,9 @@ class JobCreate(BaseModel):
     year_end: int | None = Field(default=None, ge=1900, le=2100)
     publication_types: list[str] | None = None
     publication_scope: str = Field(default="all")
+    # Optional pre-confirmed search terms from /expand-keywords.
+    # When present, the collect task searches each term and deduplicates.
+    search_terms: list[str] | None = Field(default=None, max_length=10)
 
     @model_validator(mode="after")
     def validate_publication_scope(self) -> "JobCreate":
@@ -59,6 +83,8 @@ class JobFromQuery(BaseModel):
     year_end: int | None = Field(default=None, ge=1900, le=2100)
     publication_types: list[str] | None = None
     publication_scope: str = Field(default="all")
+    # User-confirmed search terms from /expand-keywords (skips re-expansion).
+    search_terms: list[str] | None = Field(default=None, max_length=10)
 
     @model_validator(mode="after")
     def validate_publication_scope(self) -> "JobFromQuery":
