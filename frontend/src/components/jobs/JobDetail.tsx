@@ -338,12 +338,13 @@ function CitationCell({
         <div className="mt-0.5 space-y-0 text-[10px] leading-tight text-[var(--color-fg-subtle)]">
           {hasBreakdown ? (
             <div className="whitespace-nowrap">
-              저널 {j ?? 0} · 프리 {p ?? 0}
+              저널 {j ?? 0} · Pre {p ?? 0}
+              {breakdownGap > 0 ? <> · 기타 {breakdownGap}</> : null}
             </div>
           ) : null}
           {influential_citation_count !== null ? (
             <div className="whitespace-nowrap">
-              핵심 {influential_citation_count}
+              (핵심 {influential_citation_count})
             </div>
           ) : null}
         </div>
