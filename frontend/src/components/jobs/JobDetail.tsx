@@ -14,6 +14,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Tabs } from "@/components/ui/Tabs";
 import { Badge } from "@/components/ui/Badge";
 import { JobStatusBadge } from "./JobStatusBadge";
+import { JobProgressStepper } from "./JobProgressStepper";
 import { AuthorRecommendations } from "@/components/authors/AuthorRecommendations";
 import { NtisPanel } from "@/components/ntis/NtisPanel";
 import { formatDateTime, formatNumber } from "@/lib/utils";
@@ -124,6 +125,11 @@ export function JobDetail({ jobId }: { jobId: string }) {
             ) : null}
           </div>
         </CardHeader>
+        <JobProgressStepper
+          status={j.status}
+          papers_collected={j.papers_collected}
+          papers_processed={j.papers_processed}
+        />
         <CardBody className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-5">
           <Stat label="최대 논문" value={formatNumber(j.max_papers)} />
           <Stat
